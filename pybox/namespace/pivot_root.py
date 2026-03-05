@@ -84,6 +84,11 @@ _libc.mount.argtypes = [
     ctypes.c_void_p,  # data
 ]
 
+MNT_DETACH: int = 0x2  # lazy unmount — detach immediately, clean up when last reference drops
+
+_libc.umount2.restype = ctypes.c_int
+_libc.umount2.argtypes = [ctypes.c_char_p, ctypes.c_int]
+
 
 def _mount(source: bytes, target: bytes, fstype: bytes | None, flags: int, data: bytes | None = None) -> int:
     """Call mount(2) directly via ctypes. Returns 0 on success, -1 on error."""
