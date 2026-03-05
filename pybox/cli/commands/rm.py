@@ -6,6 +6,7 @@ from typing import Annotated
 
 import typer
 
+from pybox.cli.completion import complete_container
 from pybox.cli.output import print_error, print_success
 
 app = typer.Typer(help="Remove one or more containers.")
@@ -13,7 +14,10 @@ app = typer.Typer(help="Remove one or more containers.")
 
 @app.callback(invoke_without_command=True)
 def rm(
-    container_ids: Annotated[list[str], typer.Argument(help="Container ID(s) to remove")],
+    container_ids: Annotated[
+        list[str],
+        typer.Argument(help="Container ID(s) or name(s) to remove", autocompletion=complete_container),
+    ],
     force: Annotated[bool, typer.Option("--force", "-f", help="Stop and remove running containers")] = False,
 ) -> None:
     """Remove CONTAINER_IDS. Running containers require --force."""
@@ -25,13 +29,14 @@ def rm(
     manager = ContainerManager(get_config())
     had_error = False
 
-    for cid in container_ids:
+    for ref in container_ids:
         try:
+            cid = manager._state.resolve(ref)
             state = manager._state.get(cid)
             if state.get("state") == ContainerState.RUNNING.value:
                 if not force:
                     print_error(
-                        f"Container '{cid[:12]}' is running. Use --force to stop and remove."
+                        f"Container '{ref}' is running. Use --force to stop and remove."
                     )
                     had_error = True
                     continue
@@ -39,7 +44,7 @@ def rm(
             manager.remove(cid)
             print_success(f"Removed {cid[:12]}")
         except ContainerNotFoundError:
-            print_error(f"Container '{cid}' not found")
+            print_error(f"Container '{ref}' not found")
             had_error = True
         except ContainerError as exc:
             print_error(str(exc))

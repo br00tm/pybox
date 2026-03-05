@@ -75,6 +75,46 @@ class StateManager:
         data: dict[str, Any] = json.loads(path.read_text())
         return data
 
+    def resolve(self, name_or_id: str) -> str:
+        """Resolve a container name or partial ID to a full container ID.
+
+        Accepts:
+          - Full 12-char container ID
+          - Partial ID prefix (minimum 3 chars)
+          - Human-readable name (exact match)
+
+        Returns:
+            Full container ID string.
+
+        Raises:
+            ContainerNotFoundError: If no match is found.
+            ContainerError: If multiple containers match the prefix.
+        """
+        from pybox.exceptions import ContainerError
+
+        # Fast path: exact ID match
+        exact = self._state_file(name_or_id)
+        if exact.exists():
+            return name_or_id
+
+        all_containers = self.list_all()
+
+        # Try name match first (exact)
+        for c in all_containers:
+            if c.get("name") == name_or_id:
+                return c["id"]
+
+        # Try prefix match on ID
+        matches = [c["id"] for c in all_containers if c["id"].startswith(name_or_id)]
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            raise ContainerError(
+                f"Ambiguous container prefix '{name_or_id}' — matches: {', '.join(m[:12] for m in matches)}"
+            )
+
+        raise ContainerNotFoundError(name_or_id)
+
     def list_all(self) -> list[dict[str, Any]]:
         """Return state dicts for all known containers.
 

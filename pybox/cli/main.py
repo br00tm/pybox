@@ -46,7 +46,7 @@ from pybox.cli.commands import info as info_mod
 app = typer.Typer(
     name="pybox",
     help="A Python-native container runtime — containers, reimagined.",
-    add_completion=False,
+    add_completion=True,
     rich_markup_mode="rich",
 )
 
