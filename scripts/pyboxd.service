@@ -1,6 +1,6 @@
 [Unit]
 Description=PyBox Container Runtime Daemon
-Documentation=https://github.com/pedrolucas/pybox
+Documentation=https://github.com/br00tm/pybox
 After=network.target
 Wants=network.target
 
