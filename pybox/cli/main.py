@@ -28,6 +28,20 @@ import typer
 
 from pybox import __version__
 from pybox.cli.output import print_banner
+from pybox.cli.commands import run as run_mod
+from pybox.cli.commands import build as build_mod
+from pybox.cli.commands import ps as ps_mod
+from pybox.cli.commands import logs as logs_mod
+from pybox.cli.commands import exec as exec_mod
+from pybox.cli.commands import stop as stop_mod
+from pybox.cli.commands import rm as rm_mod
+from pybox.cli.commands import images as images_mod
+from pybox.cli.commands import rmi as rmi_mod
+from pybox.cli.commands import pull as pull_mod
+from pybox.cli.commands import push as push_mod
+from pybox.cli.commands import login as login_mod
+from pybox.cli.commands import network as network_mod
+from pybox.cli.commands import info as info_mod
 
 app = typer.Typer(
     name="pybox",
@@ -62,21 +76,6 @@ def main(
 # ------------------------------------------------------------------
 # Register all sub-commands
 # ------------------------------------------------------------------
-
-from pybox.cli.commands import run as run_mod
-from pybox.cli.commands import build as build_mod
-from pybox.cli.commands import ps as ps_mod
-from pybox.cli.commands import logs as logs_mod
-from pybox.cli.commands import exec as exec_mod
-from pybox.cli.commands import stop as stop_mod
-from pybox.cli.commands import rm as rm_mod
-from pybox.cli.commands import images as images_mod
-from pybox.cli.commands import rmi as rmi_mod
-from pybox.cli.commands import pull as pull_mod
-from pybox.cli.commands import push as push_mod
-from pybox.cli.commands import login as login_mod
-from pybox.cli.commands import network as network_mod
-from pybox.cli.commands import info as info_mod
 
 app.add_typer(run_mod.app, name="run")
 app.add_typer(build_mod.app, name="build")

@@ -31,7 +31,7 @@ def login(
 
     # Validate credentials by fetching a token
     try:
-        token = asyncio.run(auth.get_token("library/hello-world", ["pull"], registry))
+        asyncio.run(auth.get_token("library/hello-world", ["pull"], registry))
     except RegistryError as exc:
         print_error(f"Login failed: {exc}")
         raise typer.Exit(1)

@@ -13,6 +13,7 @@ with result being a bytes chunk, terminated by result=None.
 
 from __future__ import annotations
 
+import asyncio
 import struct
 from enum import Enum
 from typing import Any
@@ -100,7 +101,7 @@ def decode_response(data: bytes) -> DaemonResponse:
     return DaemonResponse.model_validate(raw)
 
 
-async def read_message(reader: "asyncio.StreamReader") -> bytes:  # type: ignore[name-defined]
+async def read_message(reader: asyncio.StreamReader) -> bytes:
     """Read one length-prefixed message from an asyncio StreamReader.
 
     Args:

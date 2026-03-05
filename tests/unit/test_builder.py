@@ -28,7 +28,7 @@ class TestLayerCache:
 
         tar = tmp_path / "layer.tar.gz"
         tar.write_bytes(b"content")
-        stored = cache.put("def456", tar)
+        cache.put("def456", tar)
         result = cache.get("def456")
         assert result.exists()
         assert result.read_bytes() == b"content"

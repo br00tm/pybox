@@ -191,7 +191,7 @@ class TestUserMap:
         from pybox.namespace.user_map import setup_rootless_id_maps
 
         with patch("pybox.namespace.user_map.write_uid_map") as mock_uid, \
-             patch("pybox.namespace.user_map.write_gid_map") as mock_gid, \
+             patch("pybox.namespace.user_map.write_gid_map"), \
              patch("os.getuid", return_value=1001), \
              patch("os.getgid", return_value=1001):
             setup_rootless_id_maps(9999)

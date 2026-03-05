@@ -56,7 +56,6 @@ class SnapshotManager:
         """
         container_dir = self._containers_dir / container_id
         upper_dir = container_dir / "upper"
-        work_dir = container_dir / "work"
 
         if not upper_dir.exists():
             raise StorageError(
