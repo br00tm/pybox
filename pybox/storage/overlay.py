@@ -155,34 +155,113 @@ class OverlayMount:
         self.umount()
 
 
+class VFSCopyMount:
+    """Fallback storage driver: merges layers by copying into a single directory.
+
+    No copy-on-write semantics — upper layers simply overwrite files from lower
+    layers. Works everywhere without root or FUSE. Used when neither kernel
+    OverlayFS nor fuse-overlayfs is available.
+
+    umount() is a no-op; the merged directory persists until the container is
+    removed by ContainerManager.remove().
+    """
+
+    def __init__(
+        self,
+        container_id: str,
+        layer_dirs: list[Path],
+        upper_dir: Path,
+        merged_dir: Path,
+    ) -> None:
+        self.container_id = container_id
+        self.layer_dirs = layer_dirs
+        self.upper_dir = upper_dir
+        self.merged_dir = merged_dir
+        self._mounted = False
+
+    def mount(self) -> None:
+        """Merge layers by copying, base → top, into merged_dir."""
+        self.upper_dir.mkdir(parents=True, exist_ok=True)
+        self.merged_dir.mkdir(parents=True, exist_ok=True)
+
+        # Copy layers base-first so upper layers overwrite lower ones
+        for layer_dir in self.layer_dirs:
+            if layer_dir.exists():
+                shutil.copytree(layer_dir, self.merged_dir, dirs_exist_ok=True)
+
+        self._mounted = True
+        logger.info("VFS copy mount ready at %s", self.merged_dir)
+
+    def umount(self) -> None:
+        """No-op — VFS copy mount does not have a kernel mount to release."""
+        self._mounted = False
+
+    def __enter__(self) -> "VFSCopyMount":
+        self.mount()
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.umount()
+
+
 def prepare_container_overlay(
     container_id: str,
     layer_dirs: list[Path],
     containers_dir: Path,
-) -> OverlayMount:
-    """Create and return an OverlayMount for a container.
+) -> "OverlayMount | VFSCopyMount":
+    """Create and return the best available overlay driver for a container.
 
-    Derives upper, work, and merged paths from the container directory
-    structure defined in ARCHITECTURE.md:
-        <containers_dir>/<container_id>/
-            upper/    — read-write layer
-            work/     — overlayfs internal
-            rootfs/   — merged mount point
+    Selection order:
+        1. Kernel OverlayFS  — when running as root (uid == 0)
+        2. fuse-overlayfs    — when rootless and fuse-overlayfs is in PATH
+        3. VFS copy fallback — always available, no COW semantics
 
     Args:
         container_id:   Short container ID (12 hex chars).
         layer_dirs:     Ordered layer directories (base layer first).
-        containers_dir: Root of the container storage
-                        (e.g. /var/lib/pybox/containers).
+        containers_dir: Root of the container storage.
 
     Returns:
-        An OverlayMount instance (not yet mounted).
+        A mount driver instance (not yet mounted).
     """
+    from pybox.rootless.fuse_overlay import FuseOverlayFSDriver
+
     container_dir = containers_dir / container_id
-    return OverlayMount(
+    upper_dir = container_dir / "upper"
+    work_dir = container_dir / "work"
+    merged_dir = container_dir / "rootfs"
+
+    if os.getuid() == 0:
+        # Root: use kernel OverlayFS
+        return OverlayMount(
+            container_id=container_id,
+            layer_dirs=layer_dirs,
+            upper_dir=upper_dir,
+            work_dir=work_dir,
+            merged_dir=merged_dir,
+        )
+
+    if FuseOverlayFSDriver.check_available():
+        # Rootless + fuse-overlayfs installed
+        logger.debug("Using fuse-overlayfs for rootless container %s", container_id)
+        return FuseOverlayFSDriver(
+            container_id=container_id,
+            layer_dirs=layer_dirs,
+            upper_dir=upper_dir,
+            work_dir=work_dir,
+            merged_dir=merged_dir,
+        )
+
+    # Rootless fallback: plain directory copy (no COW)
+    logger.warning(
+        "fuse-overlayfs not found — using VFS copy fallback for container %s. "
+        "Install fuse-overlayfs for proper copy-on-write support: "
+        "sudo apt install fuse-overlayfs",
+        container_id,
+    )
+    return VFSCopyMount(
         container_id=container_id,
         layer_dirs=layer_dirs,
-        upper_dir=container_dir / "upper",
-        work_dir=container_dir / "work",
-        merged_dir=container_dir / "rootfs",
+        upper_dir=upper_dir,
+        merged_dir=merged_dir,
     )
