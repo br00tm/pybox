@@ -196,7 +196,7 @@ class ContainerManager:
         os.close(sync_r)  # parent does not read
 
         # Write uid/gid maps for the child's new user namespace, then unblock it
-        _write_id_maps_for_child(pid)
+        self._write_id_maps_for_child(pid)
         os.close(sync_w)  # closing write end sends EOF → child unblocks
 
         # Add the child to the cgroup so resource limits apply
