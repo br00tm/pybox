@@ -27,7 +27,7 @@ import hashlib
 import json
 from typing import Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # ------------------------------------------------------------------
@@ -59,12 +59,14 @@ class CopySpec(BaseModel):
 class CopyStep(BaseModel):
     """Copy files from the build context into the image."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     name: str = ""
-    copy: CopySpec
+    files: CopySpec = Field(alias="copy")
 
     def cache_key(self, parent_digest: str = "") -> str:
         payload = json.dumps(
-            {"type": "copy", "src": self.copy.src, "dst": self.copy.dst, "parent": parent_digest},
+            {"type": "copy", "src": self.files.src, "dst": self.files.dst, "parent": parent_digest},
             sort_keys=True,
         )
         return hashlib.sha256(payload.encode()).hexdigest()

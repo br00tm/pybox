@@ -200,8 +200,8 @@ class ImageBuilder:
         import tarfile
         import tempfile
 
-        src = Path(step.copy.src)
-        dst = step.copy.dst.lstrip("/")
+        src = Path(step.files.src)
+        dst = step.files.dst.lstrip("/")
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
