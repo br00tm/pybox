@@ -35,6 +35,7 @@ from pybox.namespace.constants import (
     CLONE_NEWNET,
     CLONE_NEWUTS,
     CLONE_NEWIPC,
+    CLONE_NEWPID,
 )
 from pybox.namespace.pivot_root import pivot_root_or_chroot, _mount, MS_BIND, MS_REC
 from pybox.namespace.unshare import sethostname, unshare
@@ -42,12 +43,12 @@ from pybox.namespace.unshare import sethostname, unshare
 logger = logging.getLogger(__name__)
 
 # Namespaces created in phase 2 (after uid/gid maps are written by parent).
-# NOTE: CLONE_NEWPID is intentionally excluded — it requires a double-fork
-# pattern (unshare → fork → child becomes PID 1) which conflicts with the
-# subprocess calls we make for mounts. It can be added back in a future
-# revision with a proper PID-namespace-aware init process.
+# CLONE_NEWPID requires a double-fork: after unshare(CLONE_NEWPID) the next
+# fork() produces PID 1 of the new PID namespace. We do that fork explicitly
+# in container_init() — all mount calls use ctypes (no subprocess) so there
+# is no accidental PID-1 fork before the intentional one.
 _POST_USER_FLAGS: int = (
-    CLONE_NEWNS | CLONE_NEWNET | CLONE_NEWUTS | CLONE_NEWIPC
+    CLONE_NEWNS | CLONE_NEWNET | CLONE_NEWUTS | CLONE_NEWIPC | CLONE_NEWPID
 )
 
 # Pseudo-filesystem mounts done inside the container.
@@ -95,9 +96,20 @@ def container_init(
         os.read(maps_done_r, 1)
         os.close(maps_done_r)
 
-        # Phase 2: now have CAP_SYS_ADMIN in the new user namespace
+        # Phase 2: now have CAP_SYS_ADMIN in the new user namespace.
+        # CLONE_NEWPID is included — the *next* fork() becomes PID 1.
         unshare(_POST_USER_FLAGS)
 
+        # Double-fork: fork so the child becomes PID 1 of the new PID namespace.
+        # This process (child A) waits for child B and exits with its code.
+        # Child B performs all container setup and exec.
+        pid2 = os.fork()
+        if pid2 > 0:
+            # Child A: wait for PID 1 (child B) and propagate its exit code.
+            _, status = os.waitpid(pid2, 0)
+            os._exit(os.waitstatus_to_exitcode(status))  # noqa: SLF001
+
+        # Child B: we are PID 1 inside the new PID namespace.
         _setup_rootfs(config)
         _mount_pseudo_filesystems()
         _set_hostname(config)

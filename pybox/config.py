@@ -19,6 +19,25 @@ def _default_root() -> Path:
     return Path.home() / ".local" / "share" / "pybox"
 
 
+def _default_cgroup_root() -> Path:
+    """Return the best available cgroup v2 root for the current user.
+
+    Priority:
+        1. /sys/fs/cgroup/pybox          — root (always writable)
+        2. user@<uid>.service cgroup     — systemd delegated user slice (rootless)
+        3. /sys/fs/cgroup/pybox          — fallback (will fail at runtime if not root,
+                                           but CgroupV2 errors are caught and skipped)
+    """
+    if os.getuid() == 0:
+        return Path("/sys/fs/cgroup/pybox")
+    uid = os.getuid()
+    # systemd delegates this slice to unprivileged users on modern distros
+    delegated = Path(f"/sys/fs/cgroup/user.slice/user-{uid}.slice/user@{uid}.service")
+    if delegated.exists() and os.access(str(delegated), os.W_OK):
+        return delegated / "pybox"
+    return Path("/sys/fs/cgroup/pybox")
+
+
 class PyBoxConfig(BaseSettings):
     """Global PyBox runtime configuration."""
 
@@ -29,7 +48,7 @@ class PyBoxConfig(BaseSettings):
 
     # cgroups v2 hierarchy root
     cgroup_root: Path = Field(
-        default=Path("/sys/fs/cgroup/pybox"), alias="PYBOX_CGROUP_ROOT"
+        default_factory=_default_cgroup_root, alias="PYBOX_CGROUP_ROOT"
     )
 
     # Logging level: DEBUG, INFO, WARNING, ERROR

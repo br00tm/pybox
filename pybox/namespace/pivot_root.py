@@ -19,7 +19,6 @@ from __future__ import annotations
 import ctypes
 import ctypes.util
 import os
-import subprocess
 
 from pybox.exceptions import NamespaceError, StorageError
 from pybox.namespace.constants import SYS_PIVOT_ROOT
@@ -173,17 +172,12 @@ def pivot_root_or_chroot(new_root: str, put_old_name: str = ".old_root") -> None
 
 
 def _lazy_umount(path: str) -> None:
-    """Unmount path with MNT_DETACH (lazy unmount) via subprocess.
+    """Unmount path with MNT_DETACH (lazy unmount) via umount2(2) syscall.
+
+    Uses ctypes directly — no subprocess fork, safe inside any namespace.
 
     Args:
         path: The mount point to unmount.
     """
-    try:
-        subprocess.run(
-            ["umount", "-l", path],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-    except subprocess.CalledProcessError:
-        pass  # Non-fatal; the container still works without the cleanup
+    _libc.umount2(path.encode(), ctypes.c_int(MNT_DETACH))
+    # Return value ignored — non-fatal if it fails (e.g. already unmounted)
