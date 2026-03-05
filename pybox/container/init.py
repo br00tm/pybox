@@ -67,6 +67,7 @@ def container_init(
     config: ContainerConfig,
     child_ready_w: int,
     maps_done_r: int,
+    cgroup_procs_path: str | None = None,
 ) -> NoReturn:
     """Entry point for the container child process.
 
@@ -76,13 +77,18 @@ def container_init(
       2. Child → Parent: write 1 byte to child_ready_w  (user ns ready)
       3. Parent writes uid_map + gid_map for this PID
       4. Parent → Child: write 1 byte to maps_done pipe (maps written)
-      5. Child: unshare(PID | MNT | NET | UTS | IPC)
-      6. Child: pivot_root → mounts → exec
+      5. Child: self-migrate into the container cgroup (if cgroup_procs_path set)
+      6. Child: unshare(PID | MNT | NET | UTS | IPC)
+      7. Child: pivot_root → mounts → exec
 
     Args:
-        config:        ContainerConfig describing the container to start.
-        child_ready_w: Write end of child→parent pipe; closed after signalling.
-        maps_done_r:   Read end of parent→child pipe; closed after reading.
+        config:            ContainerConfig describing the container to start.
+        child_ready_w:     Write end of child→parent pipe; closed after signalling.
+        maps_done_r:       Read end of parent→child pipe; closed after reading.
+        cgroup_procs_path: Path to cgroup.procs file for the container cgroup.
+                           When set, child writes its own PID to this file —
+                           self-migration avoids the need for the parent to have
+                           write access to the child's current cgroup.
     """
     try:
         # Phase 1: create user namespace (no privileges required)
@@ -95,6 +101,16 @@ def container_init(
         # Wait for parent to confirm maps are written
         os.read(maps_done_r, 1)
         os.close(maps_done_r)
+
+        # Self-migrate into the container cgroup so resource limits apply.
+        # The child can always write its own PID to a cgroup it has permission
+        # on without needing write access to the source cgroup (session scope).
+        if cgroup_procs_path:
+            try:
+                Path(cgroup_procs_path).write_text(str(os.getpid()))
+                logger.debug("Self-migrated into cgroup %s", cgroup_procs_path)
+            except OSError as exc:
+                logger.debug("Failed to self-migrate into cgroup: %s", exc)
 
         # Phase 2: now have CAP_SYS_ADMIN in the new user namespace.
         # CLONE_NEWPID is included — the *next* fork() becomes PID 1.

@@ -165,19 +165,22 @@ class ContainerManager:
         container_cfg_data: dict[str, Any] = json.loads(config_path.read_text())
         container_cfg = ContainerConfig.model_validate(container_cfg_data)
 
-        # Apply cgroup limits before fork (best-effort — skipped when rootless)
+        # Create cgroup and apply resource limits before fork.
+        # The child will self-migrate into the cgroup (write its own PID to
+        # cgroup.procs) — this avoids the parent needing write access to the
+        # child's source cgroup (session scope), which would cause EPERM.
         cgroup = CgroupV2(container_id, self._cfg.cgroup_root)
-        _cgroup_available = False
+        cgroup_procs_path: str | None = None
         try:
             cgroup.create()
             if container_cfg.cgroup_spec:
                 cgroup.apply_limits(container_cfg.cgroup_spec)
-            _cgroup_available = True
+            cgroup_procs_path = str(cgroup.cgroup_path / "cgroup.procs")
         except Exception as exc:
-            logger.warning(
-                "cgroup setup skipped for %s (running rootless or no permission): %s",
-                container_id, exc,
-            )
+            # Rootless cgroup limitation: moving a process between non-descendant
+            # cgroups requires write access to the source cgroup (session-N.scope),
+            # which unprivileged users don't have. Full support needs systemd D-Bus.
+            logger.debug("cgroup unavailable for %s (rootless): %s", container_id, exc)
 
         # Two-pipe synchronisation for user-namespace uid/gid map handshake:
         #   child_ready:  child → parent  (child signals after unshare NEWUSER)
@@ -192,7 +195,12 @@ class ContainerManager:
             os.close(child_ready_r)
             os.close(maps_done_w)
             from pybox.container.init import container_init
-            container_init(container_cfg, child_ready_w=child_ready_w, maps_done_r=maps_done_r)
+            container_init(
+                container_cfg,
+                child_ready_w=child_ready_w,
+                maps_done_r=maps_done_r,
+                cgroup_procs_path=cgroup_procs_path,
+            )
             os._exit(1)  # noqa: SLF001
 
         # ---- Parent process ----
@@ -208,16 +216,9 @@ class ContainerManager:
         # Write uid/gid maps for the child's new user namespace
         self._write_id_maps_for_child(pid)
 
-        # Signal child: maps are written, continue with rest of setup
+        # Signal child: maps are written, it will self-migrate into cgroup then continue
         os.write(maps_done_w, b"\x00")
         os.close(maps_done_w)
-
-        # Add the child to the cgroup so resource limits apply
-        if _cgroup_available:
-            try:
-                cgroup.add_pid(pid)
-            except Exception as exc:
-                logger.warning("Failed to add PID %d to cgroup: %s", pid, exc)
 
         self._state.update(container_id, state=ContainerState.RUNNING.value, pid=pid)
         logger.info("Container %s started (PID=%d)", container_id, pid)
