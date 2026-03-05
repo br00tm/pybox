@@ -13,66 +13,67 @@
 
 <br/>
 
-> **PyBox** é um container runtime construído do zero em Python puro, usando diretamente as primitivas do kernel Linux que sustentam o Docker — namespaces, cgroups v2 e OverlayFS. Nada de Go, nada de binários opacos. Só Python falando com o kernel.
+> **PyBox** is a container runtime built from scratch in pure Python, talking directly to the Linux kernel primitives that power Docker — namespaces, cgroups v2, and OverlayFS. No Go, no opaque binaries. Just Python speaking to the kernel.
 
 </div>
 
 ---
 
-## 📋 Índice
+## Table of Contents
 
-- [Sobre o Projeto](#-sobre-o-projeto)
-- [Funcionalidades](#-funcionalidades)
-- [Arquitetura](#-arquitetura)
-- [Como Funciona](#-como-funciona)
-- [Tecnologias](#-tecnologias)
-- [Estrutura do Projeto](#-estrutura-do-projeto)
-- [Pré-requisitos](#-pré-requisitos)
-- [Instalação](#-instalação)
-- [Como Rodar](#-como-rodar)
-- [Referência de Comandos](#-referência-de-comandos)
+- [About](#-about)
+- [Features](#-features)
+- [Architecture](#-architecture)
+- [How It Works](#-how-it-works)
+- [Tech Stack](#-tech-stack)
+- [Project Structure](#-project-structure)
+- [Prerequisites](#-prerequisites)
+- [Installation](#-installation)
+- [Usage](#-usage)
+- [Command Reference](#-command-reference)
 - [boxfile.toml](#-boxfiletoml)
-- [Variáveis de Ambiente](#-variáveis-de-ambiente)
-- [Desenvolvimento](#-desenvolvimento)
-- [Testes](#-testes)
-- [Makefile — Comandos Úteis](#-makefile--comandos-úteis)
+- [Environment Variables](#-environment-variables)
+- [Development](#-development)
+- [Testing](#-testing)
+- [Makefile](#-makefile)
 - [Daemon (pyboxd)](#-daemon-pyboxd)
 - [Roadmap](#-roadmap)
-- [Contribuindo](#-contribuindo)
-- [Licença](#-licença)
+- [Contributing](#-contributing)
+- [License](#-license)
 
 ---
 
-## 💡 Sobre o Projeto
+## About
 
-O **PyBox** nasceu de uma pergunta simples: *como um container realmente funciona?*
+**PyBox** started with a simple question: *how does a container actually work?*
 
-Em vez de usar bibliotecas de alto nível ou chamar `runc` como subprocess, o PyBox implementa cada peça do puzzle diretamente — desde a syscall `unshare(2)` que cria namespaces até o `pivot_root(2)` que troca o filesystem raiz do container. Cada linha de código é auditável, cada syscall é documentada.
+Instead of using high-level libraries or shelling out to `runc`, PyBox implements every piece of the puzzle directly — from the `unshare(2)` syscall that creates namespaces to the `pivot_root(2)` that switches the container's filesystem root. Every line of code is auditable, every syscall is documented.
 
-O resultado é um container runtime completo e **OCI-compatível** que roda imagens do Docker Hub, constrói novas imagens via `boxfile.toml`, gerencia redes virtuais com NAT, e suporta containers rootless com user namespaces.
-
----
-
-## ✨ Funcionalidades
-
-- 🐳 **Container Runner** — pull de imagens OCI + isolamento completo via namespaces Linux
-- 🏷️ **Nomes de Container** — `--name meu-app` para referenciar containers por nome em todos os comandos
-- 🔄 **Ciclo de Vida Completo** — `run`, `start`, `stop`, `exec`, `rm` aceitam nome ou ID (inclusive prefixo)
-- 🌙 **Modo Background** — `--detach / -d` inicia containers em background e retorna o ID imediatamente
-- ⌨️ **Tab Completion** — autocompletar IDs e nomes de containers no shell (`--install-completion`)
-- 🏗️ **Image Builder** — construção de imagens a partir de `boxfile.toml` com cache de layers
-- 🌐 **Container Networking** — bridge virtual, veth pairs, IPAM e NAT com nftables
-- 📡 **Daemon Persistente** — `pyboxd` com socket Unix, estado persistente e recuperação de crash
-- 📜 **Log Streaming** — captura e streaming em tempo real de stdout/stderr
-- 🔗 **Exec em Container** — entra em container em execução via `setns(2)`
-- 🐍 **Python First-Class** — instala venv e `pip` nativamente como step de build
-- 🔐 **Rootless Containers** — user namespaces, fuse-overlayfs e slirp4netns (sem root)
-- 📦 **Registry Push/Pull** — push e pull OCI para Docker Hub, GHCR e registries privadas
-- 🔒 **cgroups v2** — limites de CPU, memória, PIDs e I/O via unified hierarchy
+The result is a complete, **OCI-compatible** container runtime that runs images from Docker Hub, builds new images via `boxfile.toml`, manages virtual networks with NAT, and supports rootless containers via user namespaces.
 
 ---
 
-## 🏗 Arquitetura
+## Features
+
+- **Container Runner** — OCI image pull + full isolation via Linux namespaces
+- **Container Names** — `--name my-app` to reference containers by name in all commands
+- **Full Lifecycle** — `run`, `start`, `stop`, `exec`, `rm` accept name, full ID, or ID prefix
+- **Background Mode** — `--detach / -d` starts containers in the background and returns the ID immediately
+- **Tab Completion** — autocomplete container IDs and names in the shell (`--install-completion`)
+- **Image Builder** — build images from `boxfile.toml` with per-step layer caching
+- **Container Networking** — virtual bridge, veth pairs, IPAM, and NAT via nftables
+- **Persistent Daemon** — `pyboxd` with Unix socket, persistent state, and crash recovery
+- **Log Streaming** — real-time capture and streaming of container stdout/stderr
+- **Exec into Container** — run commands in a running container via `setns(2)`
+- **Python First-Class** — installs venv and pip natively as a build step
+- **Rootless Containers** — user namespaces, fuse-overlayfs, and slirp4netns (no root required)
+- **Registry Push/Pull** — push and pull OCI images to/from Docker Hub, GHCR, and private registries
+- **cgroups v2** — CPU, memory, PID, and I/O limits via unified hierarchy
+- **Populated /dev** — essential devices (`null`, `zero`, `urandom`, `tty`, etc.) bind-mounted from the host so programs like `apt-get` and `sudo` work correctly
+
+---
+
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -109,7 +110,7 @@ O resultado é um container runtime completo e **OCI-compatível** que roda imag
                └─────────────────────────────────┘
 ```
 
-### Estado do Container (Máquina de Estados)
+### Container State Machine
 
 ```
 CREATED ──► RUNNING ──► PAUSED
@@ -122,17 +123,17 @@ CREATED ──► RUNNING ──► PAUSED
 
 ---
 
-## ⚙️ Como Funciona
+## How It Works
 
-O PyBox usa três primitivas do kernel Linux para criar isolamento completo:
+PyBox uses three Linux kernel primitives to create full isolation:
 
 <div align="center">
 
-| Primitiva | Mecanismo | O que garante |
-|-----------|-----------|---------------|
-| **Namespaces** | `unshare(2)` via ctypes | Isolamento de PID, rede, filesystem, hostname, IPC |
-| **cgroups v2** | `/sys/fs/cgroup/pybox/<id>/` | Limites de CPU, memória, PIDs, I/O |
-| **OverlayFS** | `mount -t overlay` | Filesystem em camadas copy-on-write |
+| Primitive | Mechanism | What it isolates |
+|-----------|-----------|-----------------|
+| **Namespaces** | `unshare(2)` via ctypes | PID, network, filesystem, hostname, IPC |
+| **cgroups v2** | `/sys/fs/cgroup/pybox/<id>/` | CPU, memory, PIDs, I/O |
+| **OverlayFS** | `mount -t overlay` | Copy-on-write layered filesystem |
 
 </div>
 
@@ -143,36 +144,51 @@ layer-3 (app code)     ──┐
 layer-2 (pip install)  ──┤──►  overlayfs mount ──► /container/rootfs
 layer-1 (apt install)  ──┤        (merged view)
 layer-0 (ubuntu base)  ──┘
-                                  upper/  ← writes do container
+                                  upper/  ← container writes
                                   work/   ← overlayfs internal
+```
+
+### Init sequence (inside the container)
+
+```
+fork()
+  └─ child: unshare(CLONE_NEWUSER)
+       ├─ signal parent → parent writes uid/gid maps
+       ├─ unshare(CLONE_NEWNS | CLONE_NEWPID | CLONE_NEWNET | CLONE_NEWUTS | CLONE_NEWIPC)
+       └─ fork()  ← child becomes PID 1 of the new PID namespace
+            ├─ mount proc/dev/sys/tmp at rootfs/* (before pivot_root)
+            ├─ bind-mount /dev/null, /dev/urandom, /dev/tty, ... from host
+            ├─ pivot_root(new_root, old_root) → unmount old_root
+            ├─ sethostname()
+            └─ execvpe(cmd)  ← never returns
 ```
 
 ---
 
-## 🛠 Tecnologias
+## Tech Stack
 
 <div align="center">
 
-| Camada | Tecnologia | Motivo |
-|--------|-----------|--------|
-| **CLI** | Typer + Rich | DX excelente, output rico no terminal |
-| **Daemon** | asyncio + anyio | Servidor Unix socket assíncrono |
-| **HTTP / Registry** | httpx | Cliente async, tipado, moderno |
-| **Config / Validation** | Pydantic v2 + pydantic-settings | Parsing seguro e validado |
-| **Syscalls** | ctypes (stdlib) | Zero dependências para operações core |
-| **Serialização IPC** | msgpack | Protocolo binário rápido para daemon |
-| **TOML (leitura)** | tomllib (stdlib 3.11+) | Zero dependências |
-| **TOML (escrita)** | tomli-w | Geração de configurações |
-| **Testes** | pytest + pytest-asyncio | Suite completa: unit, integration, e2e |
-| **Linting** | ruff + mypy | Fast, strict, moderno |
-| **Rede** | iproute2 + nftables | Bridge, veth pairs, NAT |
-| **Rootless** | fuse-overlayfs + slirp4netns | Containers sem root |
+| Layer | Technology | Why |
+|-------|-----------|-----|
+| **CLI** | Typer + Rich | Great DX, rich terminal output |
+| **Daemon** | asyncio + anyio | Async Unix socket server |
+| **HTTP / Registry** | httpx | Async, typed, modern HTTP client |
+| **Config / Validation** | Pydantic v2 + pydantic-settings | Safe, validated parsing |
+| **Syscalls** | ctypes (stdlib) | Zero dependencies for core operations |
+| **IPC Serialization** | msgpack | Fast binary protocol for daemon |
+| **TOML (read)** | tomllib (stdlib 3.11+) | Zero dependencies |
+| **TOML (write)** | tomli-w | Config generation |
+| **Tests** | pytest + pytest-asyncio | Full suite: unit, integration, e2e |
+| **Linting** | ruff + mypy | Fast, strict, modern |
+| **Networking** | iproute2 + nftables | Bridge, veth pairs, NAT |
+| **Rootless** | fuse-overlayfs + slirp4netns | Containers without root |
 
 </div>
 
 ---
 
-## 📁 Estrutura do Projeto
+## Project Structure
 
 ```
 pybox/
@@ -182,21 +198,21 @@ pybox/
 ├── pybox/
 │   ├── __init__.py             # __version__ = "0.1.0"
 │   ├── config.py               # PyBoxConfig via pydantic-settings
-│   ├── exceptions.py           # hierarquia de exceções tipadas
+│   ├── exceptions.py           # typed exception hierarchy
 │   │
-│   ├── cli/                    # Interface de usuário
-│   │   ├── main.py             # app Typer raiz (pybox)
-│   │   ├── output.py           # rich formatters, tabelas, progress bars
-│   │   ├── completion.py       # funções de tab completion (IDs, nomes, imagens)
+│   ├── cli/                    # User interface
+│   │   ├── main.py             # root Typer app (pybox)
+│   │   ├── output.py           # rich formatters, tables, progress bars
+│   │   ├── completion.py       # tab completion (IDs, names, images)
 │   │   └── commands/
-│   │       ├── run.py          # pybox run  (--name, --detach/-d, Tab complete)
-│   │       ├── start.py        # pybox start (por nome ou ID, --detach/-d)
+│   │       ├── run.py          # pybox run  (--name, --detach/-d, tab complete)
+│   │       ├── start.py        # pybox start (by name or ID, always background)
 │   │       ├── build.py        # pybox build
 │   │       ├── ps.py           # pybox ps
-│   │       ├── logs.py         # pybox logs (Tab complete por nome)
-│   │       ├── exec.py         # pybox exec (resolve nome → ID)
-│   │       ├── stop.py         # pybox stop (por nome ou ID, Tab complete)
-│   │       ├── rm.py           # pybox rm   (por nome ou ID, Tab complete)
+│   │       ├── logs.py         # pybox logs (tab complete by name)
+│   │       ├── exec.py         # pybox exec (resolves name → ID)
+│   │       ├── stop.py         # pybox stop (by name or ID, tab complete)
+│   │       ├── rm.py           # pybox rm   (by name or ID, tab complete)
 │   │       ├── images.py       # pybox images
 │   │       ├── rmi.py          # pybox rmi
 │   │       ├── pull.py         # pybox pull
@@ -205,13 +221,13 @@ pybox/
 │   │       ├── network.py      # pybox network ls/create/rm/inspect
 │   │       └── info.py         # pybox info
 │   │
-│   ├── container/              # Ciclo de vida do container
+│   ├── container/              # Container lifecycle
 │   │   ├── runtime.py          # ContainerManager: create/start/stop/remove
 │   │   ├── state.py            # StateManager + ContainerState FSM
 │   │   ├── config.py           # ContainerConfig (pydantic)
-│   │   ├── init.py             # processo init (PID 1) — roda dentro do container
+│   │   ├── init.py             # init process (PID 1) — runs inside the container
 │   │   ├── exec.py             # exec via setns(2)
-│   │   └── logs.py             # LogManager: captura e streaming
+│   │   └── logs.py             # LogManager: capture and streaming
 │   │
 │   ├── namespace/              # Linux namespaces via ctypes
 │   │   ├── constants.py        # CLONE_NEW* flags, SYS_PIVOT_ROOT
@@ -220,41 +236,41 @@ pybox/
 │   │   └── user_map.py         # IDMapping, write_uid_map/gid_map
 │   │
 │   ├── cgroups/                # Resource limiting (cgroups v2)
-│   │   ├── specs.py            # CgroupSpec com parsing de "256m", "0.5 CPU"
+│   │   ├── specs.py            # CgroupSpec with parsing of "256m", "0.5 CPU"
 │   │   └── v2.py               # CgroupV2: create/delete/apply_limits/add_pid
 │   │
-│   ├── image/                  # Gerenciamento de imagens OCI
+│   ├── image/                  # OCI image management
 │   │   ├── manifest.py         # OciManifest, OciConfig, OciLayer (pydantic)
-│   │   ├── puller.py           # ImagePuller: pull paralelo com semaphore
-│   │   ├── layer.py            # extract_layer() com whiteout handling
+│   │   ├── puller.py           # ImagePuller: parallel pull with semaphore
+│   │   ├── layer.py            # extract_layer() with whiteout handling
 │   │   ├── build_spec.py       # BuildSpec, RunStep, CopyStep, EnvStep
 │   │   ├── parser.py           # parse_boxfile() via tomllib
-│   │   ├── builder.py          # ImageBuilder com layer cache
-│   │   ├── commit.py           # commit_image(): monta OCI manifest
+│   │   ├── builder.py          # ImageBuilder with layer cache
+│   │   ├── commit.py           # commit_image(): assembles OCI manifest
 │   │   ├── python_step.py      # PythonStepRunner: venv + pip install
 │   │   └── tag.py              # TagManager: tag/resolve/untag
 │   │
 │   ├── storage/                # Filesystem driver
 │   │   ├── overlay.py          # OverlayMount, prepare_container_overlay()
-│   │   ├── layer_cache.py      # LayerCache: cache de layers por step hash
+│   │   ├── layer_cache.py      # LayerCache: per-step hash cache
 │   │   └── snapshot.py         # SnapshotManager: upper dir → layer tar
 │   │
 │   ├── network/                # Container networking
 │   │   ├── models.py           # Network, NetworkEndpoint (pydantic)
-│   │   ├── ipam.py             # IpamManager: pool CIDR com file lock
+│   │   ├── ipam.py             # IpamManager: CIDR pool with file lock
 │   │   ├── bridge.py           # BridgeManager: pybox0 bridge interface
 │   │   ├── veth.py             # VethManager: veth pairs
 │   │   ├── nat.py              # NatManager: nftables MASQUERADE + DNAT
 │   │   ├── dns.py              # write_resolv_conf()
-│   │   └── manager.py          # NetworkManager: orquestra tudo
+│   │   └── manager.py          # NetworkManager: orchestrates everything
 │   │
 │   ├── registry/               # OCI Registry client
-│   │   ├── auth.py             # DockerHubAuth: Bearer token + credenciais
+│   │   ├── auth.py             # DockerHubAuth: Bearer token + credentials
 │   │   ├── client.py           # RegistryClient: pull manifest + blobs
 │   │   ├── push.py             # OciRegistryPusher: push layers + manifest
-│   │   └── mirror.py           # RegistryMirror: cache local de blobs
+│   │   └── mirror.py           # RegistryMirror: local blob cache
 │   │
-│   └── rootless/               # Containers sem root
+│   └── rootless/               # Rootless containers
 │       ├── __init__.py         # is_rootless(), get_subuid_range()
 │       ├── user_ns.py          # setup_user_namespace() via newuidmap
 │       ├── fuse_overlay.py     # FuseOverlayFSDriver
@@ -267,7 +283,7 @@ pybox/
 │   └── main.py                 # PyBoxDaemon: asyncio Unix socket server
 │
 ├── tests/
-│   ├── unit/                   # 156 testes, sem root necessário
+│   ├── unit/                   # 158 tests, no root required
 │   │   ├── test_namespace.py
 │   │   ├── test_cgroups.py
 │   │   ├── test_image.py
@@ -279,51 +295,51 @@ pybox/
 │   │   ├── test_logs.py
 │   │   ├── test_rootless.py
 │   │   └── test_push.py
-│   └── integration/            # 2 testes (daemon real em socket temporário)
+│   └── integration/            # 2 tests (real daemon on a temp socket)
 │       └── test_daemon.py
 │
 ├── scripts/
-│   ├── install-dev.sh          # setup completo do ambiente de dev
-│   └── pyboxd.service          # systemd unit para o daemon
-├── boxfile.toml                # exemplo completo de image definition
-├── Makefile                    # comandos automatizados
-└── pyproject.toml              # build config, dependências, entry points
+│   ├── install-dev.sh          # full dev environment setup
+│   └── pyboxd.service          # systemd unit for the daemon
+├── boxfile.toml                # complete image definition example
+├── Makefile                    # automation commands
+└── pyproject.toml              # build config, dependencies, entry points
 ```
 
 ---
 
-## 📦 Pré-requisitos
+## Prerequisites
 
-### Sistema Operacional
+### Operating System
 
-- **Linux** com kernel **5.4+** (Ubuntu 22.04+, Debian 11+, Fedora 35+)
-- cgroups v2 habilitado: `/sys/fs/cgroup/cgroup.controllers` deve existir
-- OverlayFS disponível: `grep overlay /proc/filesystems` deve retornar resultado
+- **Linux** with kernel **5.4+** (Ubuntu 22.04+, Debian 11+, Fedora 35+)
+- cgroups v2 enabled: `/sys/fs/cgroup/cgroup.controllers` must exist
+- OverlayFS available: `grep overlay /proc/filesystems` must return a result
 
-### Verificação rápida
+### Quick check
 
 ```bash
-# Verificar kernel
+# Check kernel version
 uname -r   # >= 5.4
 
-# Verificar cgroups v2
+# Check cgroups v2
 cat /sys/fs/cgroup/cgroup.controllers
-# Deve mostrar: cpuset cpu io memory hugetlb pids rdma
+# Expected: cpuset cpu io memory hugetlb pids rdma
 
-# Verificar OverlayFS
+# Check OverlayFS
 grep overlay /proc/filesystems
-# Deve mostrar: nodev overlay
+# Expected: nodev overlay
 ```
 
-### Dependências do Sistema (para funcionalidades completas)
+### System Dependencies (for full functionality)
 
-| Pacote | Para que serve | Obrigatório |
-|--------|---------------|-------------|
-| `iproute2` | Gerenciamento de interfaces de rede | Networking |
-| `nftables` | NAT e firewall para containers | Networking |
-| `fuse-overlayfs` | OverlayFS sem root | Rootless |
-| `slirp4netns` | Networking sem root | Rootless |
-| `uidmap` | `newuidmap`/`newgidmap` para user namespaces | Rootless |
+| Package | Purpose | Required for |
+|---------|---------|-------------|
+| `iproute2` | Network interface management | Networking |
+| `nftables` | NAT and firewall for containers | Networking |
+| `fuse-overlayfs` | Rootless OverlayFS | Rootless |
+| `slirp4netns` | Rootless networking | Rootless |
+| `uidmap` | `newuidmap`/`newgidmap` for user namespaces | Rootless |
 
 ```bash
 # Ubuntu / Debian
@@ -335,7 +351,7 @@ sudo dnf install -y iproute nftables fuse-overlayfs slirp4netns shadow-utils
 
 ### Python
 
-- **Python 3.11+** (usa `tomllib` da stdlib)
+- **Python 3.11+** (uses `tomllib` from stdlib)
 
 ```bash
 python3 --version   # >= 3.11
@@ -343,246 +359,226 @@ python3 --version   # >= 3.11
 
 ---
 
-## 🚀 Instalação
+## Installation
 
-### Instalação Rápida (desenvolvimento)
+### Quick install (development)
 
 ```bash
-# 1. Clone o repositório
+# 1. Clone the repository
 git clone https://github.com/br00tm/pybox.git
 cd pybox
 
-# 2. Instale o pacote em modo editável com dependências de dev
+# 2. Install in editable mode with dev dependencies
 pip install -e ".[dev]"
 
-# 3. Verifique a instalação
+# 3. Verify
 pybox --version
 ```
 
-### Instalação Completa (com dependências do sistema)
+### Full install (with system dependencies)
 
 ```bash
-# Setup automático — instala deps do sistema, configura subuid/subgid,
-# cria diretórios de storage e instala o pacote Python
+# Automated setup — installs system deps, configures subuid/subgid,
+# creates storage directories, and installs the Python package
 sudo ./scripts/install-dev.sh
 ```
 
-O script `install-dev.sh` faz:
-- Instala `fuse-overlayfs`, `slirp4netns`, `uidmap`, `nftables`, `iproute2`
-- Adiciona entradas em `/etc/subuid` e `/etc/subgid` para o seu usuário
-- Cria `/var/lib/pybox/{images,containers,volumes,networks,cache}`
-- Instala o pacote Python com `pip install -e ".[dev]"`
-- Habilita `loginctl enable-linger` para serviços de usuário
+`install-dev.sh` does the following:
+- Installs `fuse-overlayfs`, `slirp4netns`, `uidmap`, `nftables`, `iproute2`
+- Adds entries to `/etc/subuid` and `/etc/subgid` for your user
+- Creates `/var/lib/pybox/{images,containers,volumes,networks,cache}`
+- Installs the Python package with `pip install -e ".[dev]"`
+- Enables `loginctl enable-linger` for user services
 
 ---
 
-## 🎯 Como Rodar
+## Usage
 
-### Tab Completion (autocompletar no shell)
+### Tab Completion
 
 ```bash
-# Instalar completion para bash (uma vez)
+# Install completion for bash (once)
 pybox --install-completion bash
 
-# Reiniciar o terminal, depois Tab funciona:
-pybox stop [Tab]       # lista containers running: meu-app  a1b2c3d4e5f6
-pybox exec [Tab]       # lista containers running
-pybox rm [Tab]         # lista todos os containers
-pybox run --image [Tab] # lista imagens locais
+# Restart the terminal, then Tab works:
+pybox stop [Tab]        # lists running containers: my-app  a1b2c3d4e5f6
+pybox exec [Tab]        # lists running containers
+pybox rm [Tab]          # lists all containers
+pybox run --image [Tab] # lists local images
 ```
 
 ---
 
 ### Containers
 
-#### Rodar um container (foreground)
+#### Run a container (foreground)
 
 ```bash
-# Container Ubuntu básico
+# Basic Ubuntu container
 pybox run --image ubuntu:24.04 -- /bin/bash
 
-# Com nome para referenciar facilmente
-pybox run --image ubuntu:24.04 --name meu-app -- /bin/bash
+# With a name for easy reference
+pybox run --image ubuntu:24.04 --name my-app -- /bin/bash
 
-# Com limites de recursos
+# With resource limits
 pybox run --image ubuntu:24.04 --memory 256m --cpu 0.5 -- /bin/bash
 
-# Com variáveis de ambiente
+# With environment variables
 pybox run --image ubuntu:24.04 -e FOO=bar -e DEBUG=1 -- /bin/bash
 
-# Com bind mount (volume)
+# With a bind mount (volume)
 pybox run --image ubuntu:24.04 -v /host/path:/container/path -- /bin/bash
 
-# Remover automaticamente ao sair
+# Remove automatically on exit
 pybox run --image ubuntu:24.04 --rm -- /bin/echo "hello"
 ```
 
-#### Rodar em background (modo detached)
+#### Run a container in the background
+
+For a container to stay alive in detached mode, its main process must be long-running. Shells like `bash` exit immediately when there are no commands to run.
 
 ```bash
-# Inicia em background, retorna o ID imediatamente
-pybox run --image ubuntu:24.04 --name webserver -d -- /bin/sleep 3600
+# Keep-alive container (use exec to interact with it)
+pybox run --image ubuntu:24.04 --name debug-env -d -- sleep infinity
 # → a1b2c3d4e5f6
-# → Container 'webserver' running in background.
+# → Container 'debug-env' running in background.
 
-# Com nome + recursos + detach
+# Enter it with exec
+pybox exec debug-env -- /bin/bash
+
+# Other keep-alive commands
+pybox run --image ubuntu:24.04 --name daemon -d -- tail -f /dev/null
 pybox run --image ubuntu:24.04 --name api -d --memory 512m -- /usr/bin/python3 server.py
 
-# Verificar containers em execução
+# Check running containers
 pybox ps
 ```
 
-#### Iniciar container parado
+#### Start a stopped container
+
+`pybox start` always starts containers in the background and returns immediately.
+Use `pybox exec` to open a shell, `pybox logs` to see output, and `pybox stop` to stop it.
 
 ```bash
-# Por nome
-pybox start meu-app
+# By name
+pybox start my-app
 
-# Por ID ou prefixo
+# By ID or prefix
 pybox start a1b2c3
 
-# Em background (não bloqueia)
-pybox start -d meu-app
-
-# Vários de uma vez
-pybox start meu-app webserver api
+# Multiple at once
+pybox start my-app webserver api
 ```
 
-#### Listar containers
+#### List containers
 
 ```bash
-# Containers em execução
+# Running containers
 pybox ps
 
-# Todos os containers (incluindo parados)
+# All containers (including stopped)
 pybox ps --all
 
-# Formato JSON
+# JSON output
 pybox ps --all --format json
 ```
 
-#### Executar comando em container em execução
+#### Execute a command in a running container
 
 ```bash
-# Por nome (Tab completion funciona aqui!)
-pybox exec meu-app /bin/sh
-pybox exec webserver bash -c "echo hello"
+# By name (tab completion works here)
+pybox exec my-app -- /bin/bash
+pybox exec webserver -- bash -c "echo hello"
 
-# Por ID ou prefixo de ID
-pybox exec a1b2c3 /bin/bash
+# By ID or prefix
+pybox exec a1b2c3 -- /bin/bash
 ```
 
-#### Logs de um container
+#### Container logs
 
 ```bash
-# Por nome
-pybox logs meu-app
+# By name
+pybox logs my-app
 
-# Seguir logs em tempo real
-pybox logs --follow meu-app
+# Follow logs in real time
+pybox logs --follow my-app
 
-# Últimas N linhas
-pybox logs --tail 100 meu-app
+# Last N lines
+pybox logs --tail 100 my-app
 
-# Com timestamps
-pybox logs --timestamps meu-app
+# With timestamps
+pybox logs --timestamps my-app
 ```
 
-#### Parar e remover containers
+#### Stop and remove containers
 
 ```bash
-# Por nome (Tab completion!)
-pybox stop meu-app
+# By name (tab completion works)
+pybox stop my-app
 pybox stop webserver api
 
-# Por prefixo de ID
+# By ID prefix
 pybox stop a1b2c3
 
-# Com timeout customizado (padrão 10s, depois SIGKILL)
-pybox stop --timeout 30 meu-app
+# With custom timeout (default 10s, then SIGKILL)
+pybox stop --timeout 30 my-app
 
-# Remover container parado
-pybox rm meu-app
+# Remove a stopped container
+pybox rm my-app
 
-# Forçar remoção de container em execução
-pybox rm --force meu-app
+# Force-remove a running container
+pybox rm --force my-app
 
-# Ciclo completo
-pybox run --image ubuntu:24.04 --name ciclo -d -- /bin/sleep 60
-pybox stop ciclo
-pybox start -d ciclo
-pybox exec ciclo /bin/sh -c "echo PID=$$"
-pybox stop ciclo && pybox rm ciclo
+# Full lifecycle example
+pybox run --image ubuntu:24.04 --name demo -d -- sleep infinity
+pybox exec demo -- /bin/bash -c "echo hello from inside"
+pybox stop demo
+pybox start demo
+pybox stop demo && pybox rm demo
 ```
 
 ---
 
----
+### Images
 
-## 📖 Referência de Comandos
-
-| Comando | Descrição | Aceita nome? | Tab complete? |
-|---------|-----------|:---:|:---:|
-| `pybox run --image IMG [--name N] [-d] -- CMD` | Cria e inicia container | — | imagem |
-| `pybox start [-d] NAME\|ID` | Inicia container parado | ✅ | containers |
-| `pybox stop NAME\|ID` | Para container (SIGTERM → SIGKILL) | ✅ | running |
-| `pybox exec NAME\|ID CMD` | Executa comando em container running | ✅ | running |
-| `pybox rm [-f] NAME\|ID` | Remove container | ✅ | containers |
-| `pybox ps [-a]` | Lista containers | — | — |
-| `pybox logs [-f] [-n N] NAME\|ID` | Streaming de logs | ✅ | containers |
-| `pybox pull IMAGE` | Baixa imagem do registry | — | — |
-| `pybox push IMAGE` | Envia imagem para registry | — | — |
-| `pybox build -t TAG [-f FILE]` | Constrói imagem do boxfile.toml | — | — |
-| `pybox images` | Lista imagens locais | — | — |
-| `pybox rmi IMAGE` | Remove imagem local | — | — |
-| `pybox network ls\|create\|rm\|inspect` | Gerencia redes | — | — |
-| `pybox info` | Versão, storage, rootless, kernel | — | — |
-| `pyboxd` | Inicia o daemon (socket Unix) | — | — |
-
-> **Resolve por prefixo**: qualquer comando que aceita ID também aceita prefixo curto — `pybox stop a1b2` para o container cujo ID começa com `a1b2`.
-
----
-
-### Imagens
-
-#### Pull de imagem do registry
+#### Pull an image from a registry
 
 ```bash
-# Docker Hub (padrão)
+# Docker Hub (default)
 pybox pull ubuntu:24.04
 pybox pull python:3.12-slim
 pybox pull nginx:alpine
 
-# Registry privada
+# Private registry
 pybox pull registry.example.com/myapp:v1
 ```
 
-#### Listar imagens locais
+#### List local images
 
 ```bash
 pybox images
 ```
 
-#### Remover imagem
+#### Remove an image
 
 ```bash
 pybox rmi ubuntu:24.04
 ```
 
-#### Login em registry
+#### Log in to a registry
 
 ```bash
 # Docker Hub
 pybox login
 
-# Registry específica
+# Specific registry
 pybox login registry.example.com
 
-# Com credenciais diretas
+# With credentials
 pybox login -u myuser -p mytoken registry.example.com
 ```
 
-#### Push de imagem
+#### Push an image
 
 ```bash
 pybox push myapp:v1
@@ -591,56 +587,80 @@ pybox push registry.example.com/myapp:v1
 
 ---
 
-### Build de Imagem
+### Building Images
 
-#### Construir a partir de um boxfile.toml
+#### Build from a boxfile.toml
 
 ```bash
-# Usando o boxfile.toml do diretório atual
+# Using boxfile.toml in the current directory
 pybox build -t myapp:v1
 
-# Especificando o arquivo
+# Specifying the file
 pybox build -f /path/to/boxfile.toml -t myapp:v1
 
-# Forçar rebuild sem cache
+# Force rebuild (skip cache)
 pybox build -f boxfile.toml -t myapp:v1 --no-cache
 ```
 
 ---
 
-### Redes
+### Networking
 
 ```bash
-# Listar redes
+# List networks
 pybox network ls
 
-# Inspecionar rede
+# Inspect a network
 pybox network inspect <network-name>
 
-# Criar rede customizada
+# Create a custom network
 pybox network create --cidr 10.100.0.0/24 mynet
 
-# Remover rede
+# Remove a network
 pybox network rm mynet
 ```
 
 ---
 
-### Informações do Sistema
+### System Info
 
 ```bash
-# Versão, modo rootless, storage driver, kernel, disk usage
+# Version, rootless mode, storage driver, kernel, disk usage
 pybox info
 ```
 
 ---
 
-## 📄 boxfile.toml
+## Command Reference
 
-O `boxfile.toml` é o equivalente PyBox do `Dockerfile` — mas com sintaxe TOML moderna e suporte nativo a Python.
+| Command | Description | Accepts name? | Tab complete? |
+|---------|-------------|:---:|:---:|
+| `pybox run --image IMG [--name N] [-d] -- CMD` | Create and start a container | — | image |
+| `pybox start NAME\|ID [...]` | Start stopped container(s) in background | ✅ | containers |
+| `pybox stop NAME\|ID` | Stop container (SIGTERM → SIGKILL) | ✅ | running |
+| `pybox exec NAME\|ID -- CMD` | Run command in a running container | ✅ | running |
+| `pybox rm [-f] NAME\|ID` | Remove a container | ✅ | containers |
+| `pybox ps [-a]` | List containers | — | — |
+| `pybox logs [-f] [-n N] NAME\|ID` | Stream container logs | ✅ | containers |
+| `pybox pull IMAGE` | Pull image from registry | — | — |
+| `pybox push IMAGE` | Push image to registry | — | — |
+| `pybox build -t TAG [-f FILE]` | Build image from boxfile.toml | — | — |
+| `pybox images` | List local images | — | — |
+| `pybox rmi IMAGE` | Remove a local image | — | — |
+| `pybox network ls\|create\|rm\|inspect` | Manage networks | — | — |
+| `pybox info` | Version, storage, rootless, kernel info | — | — |
+| `pyboxd` | Start the daemon (Unix socket) | — | — |
+
+> **Prefix resolution**: any command that accepts an ID also accepts a short prefix — `pybox stop a1b2` stops the container whose ID starts with `a1b2`.
+
+---
+
+## boxfile.toml
+
+`boxfile.toml` is PyBox's equivalent of a `Dockerfile` — with modern TOML syntax and first-class Python support.
 
 ```toml
-# boxfile.toml — definição completa de uma imagem PyBox
+# boxfile.toml — complete PyBox image definition
 
 [box]
 name    = "my-app"
@@ -648,13 +668,13 @@ version = "1.0.0"
 base    = "ubuntu:24.04"
 
 [box.meta]
-author      = "Pedro Lucas"
-description = "Exemplo de imagem PyBox"
+author      = "Your Name"
+description = "A PyBox image example"
 labels      = { env = "production", team = "backend" }
 
-# ── Python first-class ──────────────────────────────────────────
-# PyBox instala o venv e as dependências automaticamente,
-# com cache inteligente baseado no hash dos pacotes.
+# ── Python first-class ───────────────────────────────────────────
+# PyBox installs the venv and dependencies automatically,
+# with smart caching based on the package hash.
 [python]
 version  = "3.12"
 packages = [
@@ -663,35 +683,35 @@ packages = [
   "httpx>=0.27",
 ]
 
-# ── Steps de build (executados em ordem) ────────────────────────
+# ── Build steps (executed in order) ─────────────────────────────
 [[steps]]
-name = "instalar dependências do sistema"
+name = "install system dependencies"
 run  = "apt-get update && apt-get install -y curl"
 
 [[steps]]
-name = "copiar código fonte"
+name = "copy source code"
 copy = { src = "./src", dst = "/app" }
 
 [[steps]]
-name = "definir workdir"
+name = "set working directory"
 workdir = "/app"
 
 [[steps]]
-name = "variáveis de build"
+name = "build-time variables"
 env = { BUILD_ENV = "production" }
 
-# ── Configuração de runtime ──────────────────────────────────────
+# ── Runtime configuration ────────────────────────────────────────
 [run]
 cmd    = ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 expose = [8000]
 env    = { PYTHONUNBUFFERED = "1", LOG_LEVEL = "info" }
 user   = "appuser"
 
-# ── Limites de recursos (cgroups v2) ────────────────────────────
+# ── Resource limits (cgroups v2) ─────────────────────────────────
 [limits]
-memory = "256m"    # 256 MB de RAM
-cpu    = 0.5       # 50% de um core
-pids   = 100       # máximo 100 processos
+memory = "256m"    # 256 MB RAM
+cpu    = 0.5       # 50% of one core
+pids   = 100       # max 100 processes
 
 # ── Healthcheck ──────────────────────────────────────────────────
 [healthcheck]
@@ -701,240 +721,240 @@ timeout  = "5s"
 retries  = 3
 ```
 
-### Tipos de Steps
+### Step Types
 
-| Step | Campo | Exemplo |
+| Step | Field | Example |
 |------|-------|---------|
 | **Shell command** | `run` | `run = "apt-get install -y curl"` |
-| **Copiar arquivos** | `copy` | `copy = { src = "./src", dst = "/app" }` |
-| **Workdir** | `workdir` | `workdir = "/app"` |
-| **Variáveis** | `env` | `env = { FOO = "bar" }` |
+| **Copy files** | `copy` | `copy = { src = "./src", dst = "/app" }` |
+| **Working directory** | `workdir` | `workdir = "/app"` |
+| **Environment variables** | `env` | `env = { FOO = "bar" }` |
 
-### Cache de Layers
+### Layer Cache
 
-O PyBox usa cache automático por step — idêntico ao Docker layer cache. Cada step tem um `cache_key` calculado como `sha256(step_content + parent_digest)`. Se o step e todos os anteriores não mudaram, o PyBox reutiliza a layer em cache e pula a execução.
+PyBox uses automatic per-step caching — identical to Docker's layer cache. Each step has a `cache_key` computed as `sha256(step_content + parent_digest)`. If the step and all previous steps are unchanged, PyBox reuses the cached layer and skips execution.
 
 ```bash
-# Rebuild forçado (sem cache)
+# Force rebuild (bypass cache)
 pybox build -f boxfile.toml -t myapp:v1 --no-cache
 ```
 
 ---
 
-## 🔧 Variáveis de Ambiente
+## Environment Variables
 
-| Variável | Descrição | Padrão (root) | Padrão (rootless) |
-|----------|-----------|---------------|-------------------|
-| `PYBOX_ROOT` | Diretório raiz de storage | `/var/lib/pybox` | `~/.local/share/pybox` |
-| `PYBOX_CGROUP_ROOT` | Raiz do cgroup do PyBox | `/sys/fs/cgroup/pybox` | `user@<uid>.service/pybox` |
-| `PYBOX_SOCKET` | Path do socket Unix do daemon | `/run/pybox/pyboxd.sock` | `~/.local/share/pybox/pyboxd.sock` |
-| `PYBOX_LOG_LEVEL` | Nível de log (`DEBUG`, `INFO`, `WARNING`) | `INFO` | `INFO` |
-| `DOCKER_CONFIG` | Diretório das credenciais de registry | `~/.docker` | `~/.docker` |
+| Variable | Description | Default (root) | Default (rootless) |
+|----------|-------------|---------------|-------------------|
+| `PYBOX_ROOT` | Storage root directory | `/var/lib/pybox` | `~/.local/share/pybox` |
+| `PYBOX_CGROUP_ROOT` | PyBox cgroup root | `/sys/fs/cgroup/pybox` | `user@<uid>.service/pybox` |
+| `PYBOX_SOCKET` | Daemon Unix socket path | `/run/pybox/pyboxd.sock` | `~/.local/share/pybox/pyboxd.sock` |
+| `PYBOX_LOG_LEVEL` | Log level (`DEBUG`, `INFO`, `WARNING`) | `INFO` | `INFO` |
+| `DOCKER_CONFIG` | Registry credentials directory | `~/.docker` | `~/.docker` |
 
 ---
 
-## 👨‍💻 Desenvolvimento
+## Development
 
-### Setup do ambiente
+### Environment setup
 
 ```bash
-# Clone e instale em modo editável
+# Clone and install in editable mode
 git clone https://github.com/br00tm/pybox.git
 cd pybox
 pip install -e ".[dev]"
 ```
 
-### Estrutura de diretórios de storage (criada automaticamente)
+### Storage directory layout (created automatically)
 
 ```
-/var/lib/pybox/
-├── images/         # imagens OCI armazenadas por digest
-├── containers/     # estado e rootfs dos containers
-├── volumes/        # volumes persistentes
-├── networks/       # estado das redes (ipam.json, etc.)
+/var/lib/pybox/          (or ~/.local/share/pybox/ for rootless)
+├── images/              # OCI images stored by digest
+├── containers/          # container state and rootfs
+├── volumes/             # persistent volumes
+├── networks/            # network state (ipam.json, etc.)
 └── cache/
-    └── layers/     # cache de layers de build por step hash
+    └── layers/          # build layer cache by step hash
 ```
 
-### Rodar com modo debug
+### Debug mode
 
 ```bash
-# Ativa logging detalhado (syscalls, mounts, cgroup writes)
+# Enable verbose logging (syscalls, mounts, cgroup writes)
 pybox --debug run --image ubuntu:24.04 -- /bin/bash
 ```
 
 ---
 
-## 🧪 Testes
+## Testing
 
-### Testes unitários (sem root)
+### Unit tests (no root required)
 
 ```bash
-# Rodar todos os testes unitários
+# Run all unit tests
 pytest tests/unit/ -v
 
-# Com cobertura de código
+# With code coverage
 pytest tests/unit/ --cov=pybox --cov-report=term-missing
 
-# Parar no primeiro erro
+# Stop on first failure
 pytest tests/unit/ -x
 ```
 
-### Testes de integração (requerem root)
+### Integration tests (require root)
 
-Os testes de integração iniciam um `PyBoxDaemon` real em um socket temporário e testam o protocolo IPC completo.
+Integration tests start a real `PyBoxDaemon` on a temporary socket and test the full IPC protocol.
 
 ```bash
-# Com sudo
 sudo python3 -m pytest tests/integration/ -v
 ```
 
-### Testes end-to-end (requerem root + rede)
+### End-to-end tests (require root + network)
 
 ```bash
 sudo python3 -m pytest tests/e2e/ -v
 ```
 
-### Suite completa
+### Full suite
 
 ```bash
 # Unit + Integration
 make test-all
 
-# Apenas unit (CI-friendly, sem root)
+# Unit only (CI-friendly, no root)
 make test-unit
 ```
 
-### Status atual dos testes
+### Current test status
 
 ```
-tests/unit/       → 158 passed ✅
-tests/integration/ →   0 passed ✅  (requerem root)
-```
-
----
-
-## 🔨 Makefile — Comandos Úteis
-
-```bash
-make install-dev    # Instala o pacote em modo editável com deps de dev
-make test-unit      # Roda testes unitários (sem root)
-make test-integration  # Roda testes de integração (requer root)
-make test-e2e       # Roda testes end-to-end (requer root + rede)
-make test-all       # unit + integration
-make lint           # Roda ruff (linter)
-make lint-fix       # Roda ruff com auto-fix
-make typecheck      # Roda mypy (type checker)
-make format         # Formata código com ruff format
-make run-daemon     # Inicia pyboxd em foreground
-make build-example  # Constrói a imagem de exemplo do boxfile.toml
-make clean          # Remove __pycache__, .mypy_cache, .ruff_cache, *.pyc
-make clean-data     # ⚠️  Remove todos os dados em /var/lib/pybox
+tests/unit/        → 158 passed ✅
+tests/integration/ →   2 passed ✅  (require root)
 ```
 
 ---
 
-## 🔌 Daemon (pyboxd)
-
-O `pyboxd` é o daemon central do PyBox — um servidor asyncio que escuta em um socket Unix e processa comandos da CLI.
-
-### Iniciar o daemon
+## Makefile
 
 ```bash
-# Iniciar em foreground
+make install-dev       # Install package in editable mode with dev deps
+make test-unit         # Run unit tests (no root)
+make test-integration  # Run integration tests (requires root)
+make test-e2e          # Run end-to-end tests (requires root + network)
+make test-all          # unit + integration
+make lint              # Run ruff (linter)
+make lint-fix          # Run ruff with auto-fix
+make typecheck         # Run mypy (type checker)
+make format            # Format code with ruff format
+make run-daemon        # Start pyboxd in foreground
+make build-example     # Build the example image from boxfile.toml
+make clean             # Remove __pycache__, .mypy_cache, .ruff_cache, *.pyc
+make clean-data        # ⚠️  Remove all data in /var/lib/pybox
+```
+
+---
+
+## Daemon (pyboxd)
+
+`pyboxd` is the PyBox central daemon — an asyncio server that listens on a Unix socket and processes CLI commands.
+
+### Start the daemon
+
+```bash
+# Start in foreground
 pyboxd
 
-# Iniciar como serviço systemd (após install-dev.sh)
+# Start as a systemd service (after install-dev.sh)
 systemctl --user start pyboxd
-systemctl --user enable pyboxd   # iniciar no boot
+systemctl --user enable pyboxd   # start on boot
 
-# Ver logs do daemon
+# View daemon logs
 journalctl --user -u pyboxd -f
 ```
 
-### Protocolo IPC
+### IPC Protocol
 
-O daemon usa **msgpack** com prefixo de 4 bytes big-endian para framing:
+The daemon uses **msgpack** with a 4-byte big-endian length prefix for framing:
 
 ```
 [4 bytes: length][msgpack payload]
 ```
 
-Métodos suportados:
+Supported methods:
 
-| Método | Descrição |
-|--------|-----------|
-| `PS` | Lista containers |
-| `INSPECT` | Detalhes de um container |
-| `STOP` | Para um container |
-| `RM` | Remove um container |
-| `LOGS` | Stream de logs (resposta múltipla) |
-| `EXEC` | Executa comando em container |
-| `INFO` | Versão e informações do sistema |
-| `IMAGES` | Lista imagens locais |
+| Method | Description |
+|--------|-------------|
+| `PS` | List containers |
+| `INSPECT` | Container details |
+| `STOP` | Stop a container |
+| `RM` | Remove a container |
+| `LOGS` | Log stream (multi-response) |
+| `EXEC` | Run command in container |
+| `INFO` | Version and system info |
+| `IMAGES` | List local images |
 
-### Recuperação de crash
+### Crash recovery
 
-Na inicialização, o `pyboxd` verifica todos os containers com estado `RUNNING` e os marca como `STOPPED` caso o processo não esteja mais em execução — garantindo que o estado persista corretamente entre reinicializações.
-
----
-
-## 🗺 Roadmap
-
-- [x] **Fase 1** — Container Runner MVP (`pybox run --image ubuntu:24.04 -- /bin/bash`)
-- [x] **Fase 2** — Image Builder (`pybox build -f boxfile.toml -t app:v1`)
-- [x] **Fase 3** — Container Networking (bridge, veth, IPAM, NAT, DNS)
-- [x] **Fase 4** — Daemon (`pyboxd`) + `ps`, `logs`, `exec`, `stop`, `rm`
-- [x] **Fase 5** — OCI Registry Push/Pull + `pybox login`, `push`, `images`
-- [x] **Fase 6** — Rootless Containers (user namespaces, fuse-overlayfs, slirp4netns)
-- [ ] **Fase 7** — `pybox compose` — múltiplos containers declarativos
-- [ ] **Fase 8** — Prometheus metrics endpoint no daemon
-- [ ] **Fase 9** — SQLite para estado persistente (substituir JSON)
-- [ ] **Fase 10** — Plugin system via Python entry points
+On startup, `pyboxd` checks all containers with state `RUNNING` and marks them as `STOPPED` if the process is no longer alive — ensuring state is consistent across restarts.
 
 ---
 
-## 🤝 Contribuindo
+## Roadmap
 
-1. Faça um fork do repositório
-2. Crie sua branch de feature
+- [x] **Phase 1** — Container Runner MVP (`pybox run --image ubuntu:24.04 -- /bin/bash`)
+- [x] **Phase 2** — Image Builder (`pybox build -f boxfile.toml -t app:v1`)
+- [x] **Phase 3** — Container Networking (bridge, veth, IPAM, NAT, DNS)
+- [x] **Phase 4** — Daemon (`pyboxd`) + `ps`, `logs`, `exec`, `stop`, `rm`
+- [x] **Phase 5** — OCI Registry Push/Pull + `pybox login`, `push`, `images`
+- [x] **Phase 6** — Rootless Containers (user namespaces, fuse-overlayfs, slirp4netns)
+- [x] **Phase 7** — Container names, background mode, tab completion, `pybox start`
+- [ ] **Phase 8** — `pybox compose` — declarative multi-container definitions
+- [ ] **Phase 9** — Prometheus metrics endpoint in the daemon
+- [ ] **Phase 10** — SQLite for persistent state (replace JSON files)
+- [ ] **Phase 11** — Plugin system via Python entry points
+
+---
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch
 
    ```bash
-   git checkout -b feature/minha-feature
+   git checkout -b feature/my-feature
    ```
 
-3. Commit suas alterações
+3. Commit your changes
 
    ```bash
-   git commit -m "feat: adiciona minha feature"
+   git commit -m "feat: add my feature"
    ```
 
-4. Garanta que os testes passam
+4. Make sure tests pass
 
    ```bash
    make lint && make test-unit
    ```
 
-5. Push para a branch
+5. Push to the branch
 
    ```bash
-   git push origin feature/minha-feature
+   git push origin feature/my-feature
    ```
 
-6. Abra um **Pull Request**
+6. Open a **Pull Request**
 
-### Diretrizes
+### Guidelines
 
-- Testes unitários são obrigatórios para novos módulos
-- Testes não devem precisar de root (use mocks para syscalls)
-- Siga o estilo existente: ruff + mypy strict
-- Docstrings em inglês, comentários em português são bem-vindos
+- Unit tests are required for new modules
+- Tests must not require root (mock syscalls where needed)
+- Follow the existing style: ruff + mypy strict
+- Docstrings and comments in English
 
 ---
 
-## 📄 Licença
+## License
 
-Este projeto está licenciado sob a **MIT License** — consulte o arquivo [LICENSE](./LICENSE) para mais detalhes.
+This project is licensed under the **MIT License** — see the [LICENSE](./LICENSE) file for details.
 
 ---
 
@@ -942,7 +962,7 @@ Este projeto está licenciado sob a **MIT License** — consulte o arquivo [LICE
 
 <img src="https://capsule-render.vercel.app/api?type=waving&color=0:1a1a2e,50:0d1b2a,100:0a0a1a&height=80&section=footer" width="100%"/>
 
-Feito com ❤️ por [**br00tm**](https://github.com/br00tm)
+Made with ❤️ by [**br00tm**](https://github.com/br00tm)
 
 *"The best way to understand containers is to build one."*
 
