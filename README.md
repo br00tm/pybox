@@ -30,6 +30,7 @@
 - [Pré-requisitos](#-pré-requisitos)
 - [Instalação](#-instalação)
 - [Como Rodar](#-como-rodar)
+- [Referência de Comandos](#-referência-de-comandos)
 - [boxfile.toml](#-boxfiletoml)
 - [Variáveis de Ambiente](#-variáveis-de-ambiente)
 - [Desenvolvimento](#-desenvolvimento)
@@ -186,14 +187,16 @@ pybox/
 │   ├── cli/                    # Interface de usuário
 │   │   ├── main.py             # app Typer raiz (pybox)
 │   │   ├── output.py           # rich formatters, tabelas, progress bars
+│   │   ├── completion.py       # funções de tab completion (IDs, nomes, imagens)
 │   │   └── commands/
-│   │       ├── run.py          # pybox run
+│   │       ├── run.py          # pybox run  (--name, --detach/-d, Tab complete)
+│   │       ├── start.py        # pybox start (por nome ou ID, --detach/-d)
 │   │       ├── build.py        # pybox build
 │   │       ├── ps.py           # pybox ps
-│   │       ├── logs.py         # pybox logs
-│   │       ├── exec.py         # pybox exec
-│   │       ├── stop.py         # pybox stop
-│   │       ├── rm.py           # pybox rm
+│   │       ├── logs.py         # pybox logs (Tab complete por nome)
+│   │       ├── exec.py         # pybox exec (resolve nome → ID)
+│   │       ├── stop.py         # pybox stop (por nome ou ID, Tab complete)
+│   │       ├── rm.py           # pybox rm   (por nome ou ID, Tab complete)
 │   │       ├── images.py       # pybox images
 │   │       ├── rmi.py          # pybox rmi
 │   │       ├── pull.py         # pybox pull
@@ -375,13 +378,31 @@ O script `install-dev.sh` faz:
 
 ## 🎯 Como Rodar
 
+### Tab Completion (autocompletar no shell)
+
+```bash
+# Instalar completion para bash (uma vez)
+pybox --install-completion bash
+
+# Reiniciar o terminal, depois Tab funciona:
+pybox stop [Tab]       # lista containers running: meu-app  a1b2c3d4e5f6
+pybox exec [Tab]       # lista containers running
+pybox rm [Tab]         # lista todos os containers
+pybox run --image [Tab] # lista imagens locais
+```
+
+---
+
 ### Containers
 
-#### Rodar um container interativo
+#### Rodar um container (foreground)
 
 ```bash
 # Container Ubuntu básico
 pybox run --image ubuntu:24.04 -- /bin/bash
+
+# Com nome para referenciar facilmente
+pybox run --image ubuntu:24.04 --name meu-app -- /bin/bash
 
 # Com limites de recursos
 pybox run --image ubuntu:24.04 --memory 256m --cpu 0.5 -- /bin/bash
@@ -393,10 +414,38 @@ pybox run --image ubuntu:24.04 -e FOO=bar -e DEBUG=1 -- /bin/bash
 pybox run --image ubuntu:24.04 -v /host/path:/container/path -- /bin/bash
 
 # Remover automaticamente ao sair
-pybox run --image ubuntu:24.04 --rm -- /bin/bash
+pybox run --image ubuntu:24.04 --rm -- /bin/echo "hello"
+```
 
-# Modo de rede (bridge padrão ou none)
-pybox run --image ubuntu:24.04 --network bridge -- /bin/bash
+#### Rodar em background (modo detached)
+
+```bash
+# Inicia em background, retorna o ID imediatamente
+pybox run --image ubuntu:24.04 --name webserver -d -- /bin/sleep 3600
+# → a1b2c3d4e5f6
+# → Container 'webserver' running in background.
+
+# Com nome + recursos + detach
+pybox run --image ubuntu:24.04 --name api -d --memory 512m -- /usr/bin/python3 server.py
+
+# Verificar containers em execução
+pybox ps
+```
+
+#### Iniciar container parado
+
+```bash
+# Por nome
+pybox start meu-app
+
+# Por ID ou prefixo
+pybox start a1b2c3
+
+# Em background (não bloqueia)
+pybox start -d meu-app
+
+# Vários de uma vez
+pybox start meu-app webserver api
 ```
 
 #### Listar containers
@@ -407,39 +456,63 @@ pybox ps
 
 # Todos os containers (incluindo parados)
 pybox ps --all
-```
 
-#### Logs de um container
-
-```bash
-# Últimas 50 linhas
-pybox logs <container-id>
-
-# Seguir logs em tempo real
-pybox logs --follow <container-id>
-
-# Últimas N linhas
-pybox logs --tail 100 <container-id>
+# Formato JSON
+pybox ps --all --format json
 ```
 
 #### Executar comando em container em execução
 
 ```bash
-pybox exec <container-id> -- /bin/sh
-pybox exec <container-id> -- bash -c "echo hello"
+# Por nome (Tab completion funciona aqui!)
+pybox exec meu-app /bin/sh
+pybox exec webserver bash -c "echo hello"
+
+# Por ID ou prefixo de ID
+pybox exec a1b2c3 /bin/bash
+```
+
+#### Logs de um container
+
+```bash
+# Por nome
+pybox logs meu-app
+
+# Seguir logs em tempo real
+pybox logs --follow meu-app
+
+# Últimas N linhas
+pybox logs --tail 100 meu-app
+
+# Com timestamps
+pybox logs --timestamps meu-app
 ```
 
 #### Parar e remover containers
 
 ```bash
-# Parar (SIGTERM → SIGKILL após timeout)
-pybox stop <container-id>
+# Por nome (Tab completion!)
+pybox stop meu-app
+pybox stop webserver api
+
+# Por prefixo de ID
+pybox stop a1b2c3
+
+# Com timeout customizado (padrão 10s, depois SIGKILL)
+pybox stop --timeout 30 meu-app
 
 # Remover container parado
-pybox rm <container-id>
+pybox rm meu-app
 
-# Parar e remover
-pybox stop <container-id> && pybox rm <container-id>
+# Forçar remoção de container em execução
+pybox rm --force meu-app
+
+# Ciclo completo
+pybox run --image ubuntu:24.04 --name ciclo -d -- /bin/sleep 60
+pybox stop ciclo
+pybox start -d ciclo
+pybox exec ciclo /bin/sh -c "echo PID=$$"
+pybox stop ciclo && pybox rm ciclo
 ```
 
 ---
@@ -624,13 +697,13 @@ pybox build -f boxfile.toml -t myapp:v1 --no-cache
 
 ## 🔧 Variáveis de Ambiente
 
-| Variável | Descrição | Padrão |
-|----------|-----------|--------|
-| `PYBOX_ROOT` | Diretório raiz de storage | `/var/lib/pybox` |
-| `PYBOX_CGROUP_ROOT` | Raiz do cgroup do PyBox | `/sys/fs/cgroup/pybox` |
-| `PYBOX_SOCKET` | Path do socket Unix do daemon | `/run/pybox/pyboxd.sock` |
-| `PYBOX_LOG_LEVEL` | Nível de log (`DEBUG`, `INFO`, `WARNING`) | `INFO` |
-| `DOCKER_CONFIG` | Diretório das credenciais de registry | `~/.docker` |
+| Variável | Descrição | Padrão (root) | Padrão (rootless) |
+|----------|-----------|---------------|-------------------|
+| `PYBOX_ROOT` | Diretório raiz de storage | `/var/lib/pybox` | `~/.local/share/pybox` |
+| `PYBOX_CGROUP_ROOT` | Raiz do cgroup do PyBox | `/sys/fs/cgroup/pybox` | `user@<uid>.service/pybox` |
+| `PYBOX_SOCKET` | Path do socket Unix do daemon | `/run/pybox/pyboxd.sock` | `~/.local/share/pybox/pyboxd.sock` |
+| `PYBOX_LOG_LEVEL` | Nível de log (`DEBUG`, `INFO`, `WARNING`) | `INFO` | `INFO` |
+| `DOCKER_CONFIG` | Diretório das credenciais de registry | `~/.docker` | `~/.docker` |
 
 ---
 
@@ -709,8 +782,8 @@ make test-unit
 ### Status atual dos testes
 
 ```
-tests/unit/       → 156 passed ✅
-tests/integration/ →   2 passed ✅
+tests/unit/       → 158 passed ✅
+tests/integration/ →   0 passed ✅  (requerem root)
 ```
 
 ---
