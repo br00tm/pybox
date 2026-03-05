@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from pathlib import Path
 from typing import Any, AsyncIterator
 
@@ -29,7 +30,17 @@ from pybox.exceptions import ContainerError
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_SOCKET = Path("/run/pybox/pyboxd.sock")
+def _default_socket() -> Path:
+    """Return /run/pybox/pyboxd.sock for root, ~/.local/share/pybox/pyboxd.sock otherwise."""
+    env = os.environ.get("PYBOX_SOCKET")
+    if env:
+        return Path(env)
+    if os.getuid() == 0:
+        return Path("/run/pybox/pyboxd.sock")
+    return Path.home() / ".local" / "share" / "pybox" / "pyboxd.sock"
+
+
+DEFAULT_SOCKET = _default_socket()
 
 
 class DaemonClient:

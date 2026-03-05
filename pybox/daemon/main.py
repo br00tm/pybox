@@ -35,7 +35,17 @@ from pybox.daemon.protocol import (
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_SOCKET = Path(os.environ.get("PYBOX_SOCKET", "/run/pybox/pyboxd.sock"))
+def _default_socket() -> Path:
+    """Return /run/pybox/pyboxd.sock for root, ~/.local/share/pybox/pyboxd.sock otherwise."""
+    env = os.environ.get("PYBOX_SOCKET")
+    if env:
+        return Path(env)
+    if os.getuid() == 0:
+        return Path("/run/pybox/pyboxd.sock")
+    return Path.home() / ".local" / "share" / "pybox" / "pyboxd.sock"
+
+
+DEFAULT_SOCKET = _default_socket()
 
 
 class PyBoxDaemon:
