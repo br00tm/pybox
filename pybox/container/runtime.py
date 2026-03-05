@@ -165,11 +165,19 @@ class ContainerManager:
         container_cfg_data: dict[str, Any] = json.loads(config_path.read_text())
         container_cfg = ContainerConfig.model_validate(container_cfg_data)
 
-        # Apply cgroup limits before fork so the child is constrained immediately
+        # Apply cgroup limits before fork (best-effort — skipped when rootless)
         cgroup = CgroupV2(container_id, self._cfg.cgroup_root)
-        cgroup.create()
-        if container_cfg.cgroup_spec:
-            cgroup.apply_limits(container_cfg.cgroup_spec)
+        _cgroup_available = False
+        try:
+            cgroup.create()
+            if container_cfg.cgroup_spec:
+                cgroup.apply_limits(container_cfg.cgroup_spec)
+            _cgroup_available = True
+        except Exception as exc:
+            logger.warning(
+                "cgroup setup skipped for %s (running rootless or no permission): %s",
+                container_id, exc,
+            )
 
         # Fork: child runs container_init, parent returns the child PID
         pid = os.fork()
@@ -183,10 +191,11 @@ class ContainerManager:
 
         # ---- Parent process ----
         # Add the child to the cgroup so resource limits apply
-        try:
-            cgroup.add_pid(pid)
-        except Exception as exc:
-            logger.warning("Failed to add PID %d to cgroup: %s", pid, exc)
+        if _cgroup_available:
+            try:
+                cgroup.add_pid(pid)
+            except Exception as exc:
+                logger.warning("Failed to add PID %d to cgroup: %s", pid, exc)
 
         self._state.update(container_id, state=ContainerState.RUNNING.value, pid=pid)
         logger.info("Container %s started (PID=%d)", container_id, pid)
@@ -347,8 +356,15 @@ class ContainerManager:
         return overlay.merged_dir
 
     def _cleanup_overlay(self, container_id: str, rootfs: Path) -> None:
-        """Attempt to unmount the OverlayFS for a container."""
+        """Attempt to unmount the overlay for a container.
+
+        Tries kernel umount first (root), then fusermount (fuse-overlayfs),
+        then silently skips (VFS copy or already unmounted).
+        """
+        import shutil
         import subprocess
+
+        # Try kernel umount (works when root or mount was kernel OverlayFS)
         try:
             subprocess.run(
                 ["umount", "-l", str(rootfs)],
@@ -357,7 +373,24 @@ class ContainerManager:
                 text=True,
             )
             logger.debug("Unmounted overlay for container %s", container_id)
-        except subprocess.CalledProcessError as exc:
-            logger.warning(
-                "Failed to unmount overlay for %s: %s", container_id, exc.stderr.strip()
-            )
+            return
+        except subprocess.CalledProcessError:
+            pass
+
+        # Try fusermount (works for fuse-overlayfs rootless mounts)
+        fusermount = shutil.which("fusermount3") or shutil.which("fusermount")
+        if fusermount:
+            try:
+                subprocess.run(
+                    [fusermount, "-u", str(rootfs)],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                logger.debug("Fusermount unmounted overlay for container %s", container_id)
+                return
+            except subprocess.CalledProcessError:
+                pass
+
+        # VFS copy mount or already unmounted — nothing to do
+        logger.debug("No active mount to clean up for container %s", container_id)
