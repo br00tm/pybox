@@ -24,10 +24,24 @@ def exec_cmd(
     from pybox.container.exec import exec_in_container
     from pybox.exceptions import ContainerError, ContainerNotFoundError
 
+    from pybox.container.runtime import ContainerManager
+    from pybox.container.state import StateManager
+
     cfg = get_config()
+    # Resolve name or partial ID → full container ID
+    try:
+        state_mgr = StateManager(cfg.containers_dir)
+        resolved_id = state_mgr.resolve(container_id)
+    except ContainerNotFoundError:
+        print_error(f"Container '{container_id}' not found")
+        raise typer.Exit(1)
+    except ContainerError as exc:
+        print_error(str(exc))
+        raise typer.Exit(1)
+
     try:
         exit_code = exec_in_container(
-            container_id,
+            resolved_id,
             list(cmd),
             cfg.containers_dir,
             tty=tty or interactive,

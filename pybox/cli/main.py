@@ -29,6 +29,7 @@ import typer
 from pybox import __version__
 from pybox.cli.output import print_banner
 from pybox.cli.commands import run as run_mod
+from pybox.cli.commands import start as start_mod
 from pybox.cli.commands import build as build_mod
 from pybox.cli.commands import ps as ps_mod
 from pybox.cli.commands import logs as logs_mod
@@ -78,6 +79,7 @@ def main(
 # ------------------------------------------------------------------
 
 app.add_typer(run_mod.app, name="run")
+app.add_typer(start_mod.app, name="start")
 app.add_typer(build_mod.app, name="build")
 app.add_typer(ps_mod.app, name="ps")
 app.add_typer(logs_mod.app, name="logs")
