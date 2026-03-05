@@ -70,11 +70,11 @@ def pivot_root(new_root: str, put_old: str) -> None:
         )
 
 
-_MS_BIND: int = 0x1000
-_MS_REC: int = 0x4000
-_MS_PRIVATE: int = 0x40000
+MS_BIND: int = 0x1000
+MS_REC: int = 0x4000
+MS_PRIVATE: int = 0x40000
 
-# mount(2) via ctypes — bypasses the mount(8) binary permission checks
+# mount(2) via ctypes — no fork, no subprocess, works inside user namespaces
 _libc.mount.restype = ctypes.c_int
 _libc.mount.argtypes = [
     ctypes.c_char_p,  # source
@@ -85,38 +85,38 @@ _libc.mount.argtypes = [
 ]
 
 
-def setup_rootfs(new_root: str) -> None:
-    """Bind-mount new_root over itself so it qualifies as a mount point.
+def _mount(source: bytes, target: bytes, fstype: bytes | None, flags: int, data: bytes | None = None) -> int:
+    """Call mount(2) directly via ctypes. Returns 0 on success, -1 on error."""
+    return _libc.mount(source, target, fstype, ctypes.c_ulong(flags), data)  # type: ignore[return-value]
 
-    pivot_root(2) requires new_root to be a mount point. Uses mount(2)
-    directly via ctypes so that inside a user namespace with CAP_SYS_ADMIN
-    the call succeeds regardless of what the mount(8) binary would check.
+
+def setup_rootfs(new_root: str) -> None:
+    """Prepare new_root as a mount point for pivot_root(2).
+
+    Makes the entire mount tree private (prevents host propagation), then
+    bind-mounts new_root onto itself so pivot_root considers it a mount point.
+    All done via mount(2) directly — no subprocess fork.
 
     Args:
-        new_root: Path to the new root filesystem directory.
+        new_root: Absolute path to the container rootfs directory.
 
     Raises:
         StorageError: If the bind mount fails.
     """
+    root = b"/"
     src = new_root.encode()
 
-    # First make the mount subtree private so host propagation doesn't interfere
-    _libc.mount(src, src, None, ctypes.c_ulong(_MS_BIND | _MS_REC), None)
+    # Make the whole mount tree private so our mounts don't propagate to host
+    _mount(b"none", root, None, MS_REC | MS_PRIVATE)
 
-    ret = _libc.mount(src, src, None, ctypes.c_ulong(_MS_BIND | _MS_REC), None)
+    # Bind-mount new_root onto itself so it becomes a proper mount point
+    ret = _mount(src, src, None, MS_BIND | MS_REC)
     if ret != 0:
         err = ctypes.get_errno()
-        # Fall back to subprocess mount if ctypes call failed
-        try:
-            subprocess.run(
-                ["mount", "--bind", new_root, new_root],
-                check=True, capture_output=True, text=True,
-            )
-        except subprocess.CalledProcessError as exc:
-            raise StorageError(
-                f"Failed to bind-mount {new_root} onto itself",
-                details=exc.stderr.strip(),
-            ) from StorageError(f"ctypes mount errno {err}: {os.strerror(err)}")
+        raise StorageError(
+            f"Failed to bind-mount {new_root} onto itself",
+            details=f"mount(2) errno {err}: {os.strerror(err)}",
+        )
 
 
 def pivot_root_or_chroot(new_root: str, put_old_name: str = ".old_root") -> None:

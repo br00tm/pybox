@@ -20,9 +20,10 @@ by the parent's os.waitpid() call.
 
 from __future__ import annotations
 
+import ctypes
+import ctypes.util
 import logging
 import os
-import subprocess
 import sys
 from pathlib import Path
 from typing import NoReturn
@@ -30,30 +31,35 @@ from typing import NoReturn
 from pybox.container.config import ContainerConfig
 from pybox.namespace.constants import (
     CLONE_NEWUSER,
-    CLONE_NEWPID,
     CLONE_NEWNS,
     CLONE_NEWNET,
     CLONE_NEWUTS,
     CLONE_NEWIPC,
 )
-from pybox.namespace.pivot_root import pivot_root_or_chroot
+from pybox.namespace.pivot_root import pivot_root_or_chroot, _mount, MS_BIND, MS_REC
 from pybox.namespace.unshare import sethostname, unshare
 
 logger = logging.getLogger(__name__)
 
-# Namespaces that require the user namespace to already have uid/gid maps
-# written before they can be created by an unprivileged process.
+# Namespaces created in phase 2 (after uid/gid maps are written by parent).
+# NOTE: CLONE_NEWPID is intentionally excluded — it requires a double-fork
+# pattern (unshare → fork → child becomes PID 1) which conflicts with the
+# subprocess calls we make for mounts. It can be added back in a future
+# revision with a proper PID-namespace-aware init process.
 _POST_USER_FLAGS: int = (
-    CLONE_NEWPID | CLONE_NEWNS | CLONE_NEWNET | CLONE_NEWUTS | CLONE_NEWIPC
+    CLONE_NEWNS | CLONE_NEWNET | CLONE_NEWUTS | CLONE_NEWIPC
 )
 
-# Pseudo-filesystem mount specs: (fstype, source, target)
-_PSEUDO_MOUNTS: list[tuple[str, str, str]] = [
-    ("proc", "proc", "/proc"),
-    ("devtmpfs", "dev", "/dev"),
-    ("sysfs", "sysfs", "/sys"),
-    ("tmpfs", "tmpfs", "/tmp"),
+# Pseudo-filesystem mounts done inside the container.
+# (fstype, source, target) — all mounted via mount(2) ctypes, no subprocess.
+_PSEUDO_MOUNTS: list[tuple[bytes, bytes, bytes]] = [
+    (b"proc",    b"proc",   b"/proc"),
+    (b"tmpfs",   b"tmpfs",  b"/dev"),   # devtmpfs needs CAP_SYS_ADMIN in init ns
+    (b"sysfs",   b"sysfs",  b"/sys"),
+    (b"tmpfs",   b"tmpfs",  b"/tmp"),
 ]
+
+_libc: ctypes.CDLL = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)  # type: ignore[arg-type]
 
 
 def container_init(
@@ -130,47 +136,35 @@ def _setup_rootfs(config: ContainerConfig) -> None:
 
 
 def _bind_volumes(config: ContainerConfig) -> None:
-    """Bind-mount host directories into the container rootfs.
-
-    Volume specs have already been parsed by setup_rootfs after pivot_root,
-    so paths here are relative to the new root (/).
-    """
+    """Bind-mount host directories into the container rootfs via mount(2)."""
     for host_path, container_path in config.volume_pairs():
         container_abs = Path("/") / str(container_path).lstrip("/")
         container_abs.mkdir(parents=True, exist_ok=True)
-        try:
-            subprocess.run(
-                ["mount", "--bind", str(host_path), str(container_abs)],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
+        src = str(host_path).encode()
+        dst = str(container_abs).encode()
+        ret = _mount(src, dst, None, MS_BIND | MS_REC)
+        if ret != 0:
+            err = ctypes.get_errno()
+            logger.warning("Failed to bind-mount %s → %s: errno %d (%s)", host_path, container_abs, err, os.strerror(err))
+        else:
             logger.debug("Bind-mounted %s → %s", host_path, container_abs)
-        except subprocess.CalledProcessError as exc:
-            logger.warning("Failed to bind-mount %s: %s", host_path, exc.stderr.strip())
 
 
 def _mount_pseudo_filesystems() -> None:
     """Mount /proc, /dev, /sys, and /tmp inside the container.
 
-    These are virtual filesystems provided by the kernel and are not
-    inherited from the host after pivot_root + mount namespace isolation.
+    Uses mount(2) directly via ctypes — no subprocess fork, no ENOMEM risk.
+    /dev is mounted as tmpfs (devtmpfs requires CAP_SYS_ADMIN in the initial
+    user namespace; inside a user namespace tmpfs is sufficient).
     """
     for fstype, source, target in _PSEUDO_MOUNTS:
-        target_path = Path(target)
-        target_path.mkdir(parents=True, exist_ok=True)
-        try:
-            subprocess.run(
-                ["mount", "-t", fstype, source, target],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            logger.debug("Mounted %s at %s", fstype, target)
-        except subprocess.CalledProcessError as exc:
-            # /dev may fail in some environments (e.g. devtmpfs not available)
-            # Log and continue — /proc is the most critical
-            logger.warning("Failed to mount %s at %s: %s", fstype, target, exc.stderr.strip())
+        Path(target.decode()).mkdir(parents=True, exist_ok=True)
+        ret = _mount(source, target, fstype, 0)
+        if ret != 0:
+            err = ctypes.get_errno()
+            logger.warning("Failed to mount %s at %s: errno %d (%s)", fstype, target, err, os.strerror(err))
+        else:
+            logger.debug("Mounted %s at %s", fstype.decode(), target.decode())
 
 
 def _set_hostname(config: ContainerConfig) -> None:
