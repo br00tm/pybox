@@ -10,13 +10,13 @@ from pybox.exceptions import NetworkError
 
 
 class TestIpamManager:
-    def _make_ipam(self, tmp_path: Path, cidr: str = "192.168.100.0/30"):
+    def _make_ipam(self, tmp_path: Path, cidr: str = "192.168.100.0/29"):
         from pybox.network.ipam import IpamManager
         return IpamManager(tmp_path, cidr=cidr, gateway="192.168.100.1")
 
     def test_allocates_unique_ips(self, tmp_path: Path) -> None:
         ipam = self._make_ipam(tmp_path)
-        # /30 has 2 usable hosts (.2 and .3); .1 is gateway
+        # /29 has 6 usable hosts (.1-.6); .1 is gateway, so 5 allocatable
         ip1 = ipam.allocate()
         ip2 = ipam.allocate()
         assert ip1 != ip2
@@ -29,9 +29,9 @@ class TestIpamManager:
         assert ip != "192.168.100.1"
 
     def test_raises_when_pool_exhausted(self, tmp_path: Path) -> None:
-        ipam = self._make_ipam(tmp_path)
-        # /30 only has 2 usable hosts
-        ipam.allocate()
+        from pybox.network.ipam import IpamManager
+        # /30 has only 2 usable hosts (.1 and .2); .1 is gateway → 1 allocatable
+        ipam = IpamManager(tmp_path / "exhaust", cidr="192.168.100.0/30", gateway="192.168.100.1")
         ipam.allocate()
         with pytest.raises(NetworkError, match="exhausted"):
             ipam.allocate()
@@ -48,11 +48,11 @@ class TestIpamManager:
     def test_persists_state_across_instances(self, tmp_path: Path) -> None:
         from pybox.network.ipam import IpamManager
 
-        ipam1 = IpamManager(tmp_path, cidr="192.168.100.0/30", gateway="192.168.100.1")
+        ipam1 = IpamManager(tmp_path, cidr="192.168.100.0/29", gateway="192.168.100.1")
         ip = ipam1.allocate()
 
         # New instance reading the same state file
-        ipam2 = IpamManager(tmp_path, cidr="192.168.100.0/30", gateway="192.168.100.1")
+        ipam2 = IpamManager(tmp_path, cidr="192.168.100.0/29", gateway="192.168.100.1")
         allocated = ipam2.list_allocated()
         assert ip in allocated
 

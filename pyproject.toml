@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pybox"
+version = "0.1.0"
+description = "A Python-native container runtime — containers, reimagined."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+authors = [{ name = "Pedro Lucas", email = "pedrolucas@example.com" }]
+
+dependencies = [
+  "typer[all]>=0.12",          # CLI framework
+  "rich>=13.0",                # Terminal output
+  "httpx>=0.27",               # Async HTTP for registry
+  "tomli-w>=1.0",              # TOML writer (read is built-in 3.11+)
+  "pydantic>=2.0",             # Config validation
+  "pydantic-settings>=2.0",    # BaseSettings for env-var config
+  "msgpack>=1.0",              # Fast serialization for image manifests
+  "cryptography>=42.0",        # TLS / digest verification
+  "anyio>=4.0",                # Async runtime
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "pytest-asyncio>=0.23",
+  "pytest-cov>=5.0",
+  "ruff>=0.4",
+  "mypy>=1.10",
+]
+
+[project.scripts]
+pybox = "pybox.cli.main:app"
+pyboxd = "pybox.daemon:main"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
