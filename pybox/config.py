@@ -5,10 +5,18 @@ All settings can be overridden via environment variables prefixed with PYBOX_.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings
+
+
+def _default_root() -> Path:
+    """Return /var/lib/pybox when running as root, ~/.local/share/pybox otherwise."""
+    if os.getuid() == 0:
+        return Path("/var/lib/pybox")
+    return Path.home() / ".local" / "share" / "pybox"
 
 
 class PyBoxConfig(BaseSettings):
@@ -17,7 +25,7 @@ class PyBoxConfig(BaseSettings):
     model_config = {"env_prefix": "PYBOX_", "env_file": ".env", "env_file_encoding": "utf-8"}
 
     # Storage root for images, containers, volumes
-    root: Path = Field(default=Path("/var/lib/pybox"), alias="PYBOX_ROOT")
+    root: Path = Field(default_factory=_default_root, alias="PYBOX_ROOT")
 
     # cgroups v2 hierarchy root
     cgroup_root: Path = Field(
