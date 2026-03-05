@@ -1,0 +1,41 @@
+"""pybox exec — execute a command in a running container."""
+
+from __future__ import annotations
+
+import sys
+from typing import Annotated
+
+import typer
+
+from pybox.cli.output import print_error
+
+app = typer.Typer(help="Execute a command in a running container.")
+
+
+@app.callback(invoke_without_command=True)
+def exec_cmd(
+    container_id: Annotated[str, typer.Argument(help="Container ID or name")],
+    cmd: Annotated[list[str], typer.Argument(help="Command to execute")],
+    tty: Annotated[bool, typer.Option("--tty", "-t", help="Allocate a pseudo-TTY")] = False,
+    interactive: Annotated[bool, typer.Option("--interactive", "-i", help="Keep stdin open")] = False,
+) -> None:
+    """Execute CMD inside CONTAINER_ID."""
+    from pybox.config import get_config
+    from pybox.container.exec import exec_in_container
+    from pybox.exceptions import ContainerError, ContainerNotFoundError
+
+    cfg = get_config()
+    try:
+        exit_code = exec_in_container(
+            container_id,
+            list(cmd),
+            cfg.containers_dir,
+            tty=tty or interactive,
+        )
+        raise typer.Exit(exit_code)
+    except ContainerNotFoundError as exc:
+        print_error(str(exc))
+        raise typer.Exit(1)
+    except ContainerError as exc:
+        print_error(str(exc))
+        raise typer.Exit(1)

@@ -1,0 +1,45 @@
+[Unit]
+Description=PyBox Container Runtime Daemon
+Documentation=https://github.com/pedrolucas/pybox
+After=network.target
+Wants=network.target
+
+[Service]
+Type=notify
+NotifyAccess=all
+ExecStart=/usr/local/bin/pyboxd
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=30s
+TimeoutStopSec=30s
+
+# Runtime state directory (creates /run/pybox on start)
+RuntimeDirectory=pybox
+RuntimeDirectoryMode=0755
+
+# Storage directories
+StateDirectory=pybox
+CacheDirectory=pybox
+
+# Capabilities needed for container operations
+AmbientCapabilities=CAP_NET_ADMIN CAP_SYS_ADMIN CAP_SETUID CAP_SETGID CAP_CHOWN CAP_MKNOD CAP_SYS_PTRACE
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_SYS_ADMIN CAP_SETUID CAP_SETGID CAP_CHOWN CAP_MKNOD CAP_SYS_PTRACE
+
+# Filesystem hardening (with exceptions for pybox storage)
+ProtectSystem=strict
+ReadWritePaths=/var/lib/pybox /run/pybox /sys/fs/cgroup/pybox
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=no
+
+# Allow mount operations
+MountFlags=shared
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pyboxd
+
+[Install]
+WantedBy=multi-user.target

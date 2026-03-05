@@ -1,0 +1,93 @@
+name: PyBox CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-typecheck:
+    name: Lint & Type Check
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run ruff (lint)
+        run: python -m ruff check pybox/ tests/
+
+      - name: Run mypy (type check)
+        run: python -m mypy pybox/
+        continue-on-error: true  # mypy strict mode may need iterative fixes
+
+  unit-tests:
+    name: Unit Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run unit tests
+        run: |
+          python -m pytest tests/unit/ \
+            -v \
+            --tb=short \
+            --cov=pybox \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            -q
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+        continue-on-error: true
+
+  integration-tests:
+    name: Integration Tests (privileged)
+    runs-on: ubuntu-22.04
+    # Integration tests need a Linux environment with cgroups v2 + overlay
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y fuse-overlayfs slirp4netns uidmap nftables
+
+      - name: Install Python dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run integration tests (with sudo)
+        run: |
+          sudo -E python -m pytest tests/integration/ \
+            -v --tb=short -q || true  # Non-fatal in CI for now

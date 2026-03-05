@@ -1,0 +1,7 @@
+.claude
+prompt.json
+pybox-all-phases-prompt.json
+boxfile.toml
+pyproject.toml
+ARCHITECTURE.md
+__pycache__/
