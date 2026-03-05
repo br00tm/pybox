@@ -55,6 +55,10 @@ O resultado é um container runtime completo e **OCI-compatível** que roda imag
 ## ✨ Funcionalidades
 
 - 🐳 **Container Runner** — pull de imagens OCI + isolamento completo via namespaces Linux
+- 🏷️ **Nomes de Container** — `--name meu-app` para referenciar containers por nome em todos os comandos
+- 🔄 **Ciclo de Vida Completo** — `run`, `start`, `stop`, `exec`, `rm` aceitam nome ou ID (inclusive prefixo)
+- 🌙 **Modo Background** — `--detach / -d` inicia containers em background e retorna o ID imediatamente
+- ⌨️ **Tab Completion** — autocompletar IDs e nomes de containers no shell (`--install-completion`)
 - 🏗️ **Image Builder** — construção de imagens a partir de `boxfile.toml` com cache de layers
 - 🌐 **Container Networking** — bridge virtual, veth pairs, IPAM e NAT com nftables
 - 📡 **Daemon Persistente** — `pyboxd` com socket Unix, estado persistente e recuperação de crash
@@ -72,7 +76,7 @@ O resultado é um container runtime completo e **OCI-compatível** que roda imag
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                     PyBox CLI (typer + rich)                     │
-│         run │ build │ ps │ exec │ logs │ push │ pull │ info      │
+│  run │ start │ stop │ exec │ ps │ logs │ build │ push │ pull │ info  │
 └──────────────────────────────┬──────────────────────────────────┘
                                 │  IPC via Unix Socket (msgpack)
 ┌──────────────────────────────▼──────────────────────────────────┐
