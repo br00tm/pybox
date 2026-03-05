@@ -92,7 +92,7 @@ def run(
         raise typer.Exit(1)
 
     try:
-        manager.start(container_id)
+        manager.start(container_id, detach=detach)
     except PyBoxError as exc:
         print_error(str(exc))
         raise typer.Exit(1)

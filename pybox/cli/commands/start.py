@@ -55,7 +55,7 @@ def start(
             continue
 
         try:
-            manager.start(cid)
+            manager.start(cid, detach=detach)
         except PyBoxError as exc:
             print_error(str(exc))
             had_error = True

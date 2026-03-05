@@ -60,6 +60,21 @@ _PSEUDO_MOUNTS: list[tuple[bytes, bytes, bytes]] = [
     (b"tmpfs",   b"tmpfs",  b"/tmp"),
 ]
 
+# Host device nodes to bind-mount into the container's /dev.
+# These are character devices that cannot be mknod'd inside a user namespace;
+# bind-mounting from the host is the only way to provide them.
+_HOST_DEV_NODES: list[str] = [
+    "null", "zero", "full", "random", "urandom", "tty",
+]
+
+# Symlinks created in /dev pointing into /proc/self/fd.
+_DEV_SYMLINKS: list[tuple[str, str]] = [
+    ("stdin",  "/proc/self/fd/0"),
+    ("stdout", "/proc/self/fd/1"),
+    ("stderr", "/proc/self/fd/2"),
+    ("fd",     "/proc/self/fd"),
+]
+
 _libc: ctypes.CDLL = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)  # type: ignore[arg-type]
 
 
@@ -132,6 +147,11 @@ def container_init(
         # Mounting pre-pivot into new_root/<target> means they land in the right
         # place automatically after pivot_root switches the root.
         _mount_pseudo_filesystems(config.rootfs)
+        # Populate /dev with essential host devices (bind-mounts + symlinks).
+        # Must happen after the /dev tmpfs is up and before pivot_root so we can
+        # still reach the host paths.
+        if config.rootfs is not None:
+            _populate_dev(config.rootfs)
         _setup_rootfs(config)
         _set_hostname(config)
         _exec_command(config)
@@ -210,6 +230,52 @@ def _mount_pseudo_filesystems(rootfs: Path | None = None) -> None:
             logger.warning("Failed to mount %s at %s: errno %d (%s)", fstype, target_bytes, err, os.strerror(err))
         else:
             logger.debug("Mounted %s at %s", fstype.decode(), target_bytes.decode())
+
+
+def _populate_dev(rootfs: Path) -> None:
+    """Bind-mount essential host devices into rootfs/dev and create symlinks.
+
+    Must be called after /dev is mounted as tmpfs at rootfs/dev and before
+    pivot_root — at this point the host filesystem is still accessible.
+
+    Character devices cannot be created with mknod(2) inside a user namespace,
+    so bind-mounting them from the host is the only way to make them available.
+    """
+    dev_dir = rootfs / "dev"
+
+    for name in _HOST_DEV_NODES:
+        host_path = Path("/dev") / name
+        if not host_path.exists():
+            continue
+        container_path = dev_dir / name
+        # Create an empty file as the bind-mount target
+        container_path.touch()
+        ret = _mount(
+            str(host_path).encode(),
+            str(container_path).encode(),
+            None,
+            MS_BIND,
+        )
+        if ret != 0:
+            err = ctypes.get_errno()
+            logger.debug(
+                "Failed to bind-mount /dev/%s: errno %d (%s)",
+                name, err, os.strerror(err),
+            )
+        else:
+            logger.debug("Bind-mounted /dev/%s", name)
+
+    # /dev/pts directory — needed for pseudo-terminal allocation (e.g. bash -i)
+    pts_dir = dev_dir / "pts"
+    pts_dir.mkdir(exist_ok=True)
+
+    # Symlinks pointing into /proc/self/fd (proc is already mounted pre-pivot)
+    for link_name, target in _DEV_SYMLINKS:
+        link_path = dev_dir / link_name
+        try:
+            os.symlink(target, link_path)
+        except FileExistsError:
+            pass
 
 
 def _set_hostname(config: ContainerConfig) -> None:

@@ -135,7 +135,7 @@ class ContainerManager:
                 f"Failed to create container from image '{image}'", details=str(exc)
             ) from exc
 
-    def start(self, container_id: str) -> int:
+    def start(self, container_id: str, *, detach: bool = False) -> int:
         """Fork and start the container process.
 
         The child process runs container_init() which unshares namespaces,
@@ -143,6 +143,9 @@ class ContainerManager:
 
         Args:
             container_id: Container ID returned by create().
+            detach:       If True, the container child calls os.setsid() and
+                          redirects stdin to /dev/null before exec so that it
+                          runs independently of the calling terminal.
 
         Returns:
             PID of the container's init process.
@@ -194,6 +197,17 @@ class ContainerManager:
             # ---- Child process ----
             os.close(child_ready_r)
             os.close(maps_done_w)
+
+            if detach:
+                # Detach from the controlling terminal so the container process
+                # is not subject to SIGTTIN/SIGHUP when the CLI exits.
+                os.setsid()
+                # Redirect stdin to /dev/null — without a terminal, interactive
+                # shells (bash) fall back to non-interactive mode and don't stop.
+                null_fd = os.open(os.devnull, os.O_RDONLY)
+                os.dup2(null_fd, 0)
+                os.close(null_fd)
+
             from pybox.container.init import container_init
             container_init(
                 container_cfg,
