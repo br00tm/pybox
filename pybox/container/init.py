@@ -110,8 +110,13 @@ def container_init(
             os._exit(os.waitstatus_to_exitcode(status))  # noqa: SLF001
 
         # Child B: we are PID 1 inside the new PID namespace.
+        # Mount pseudo-filesystems BEFORE pivot_root: the kernel blocks proc/sysfs
+        # mounting after pivot_root in a user namespace (the new root mount's
+        # user_ns comes from the host FS, breaking the PID-ns ownership check).
+        # Mounting pre-pivot into new_root/<target> means they land in the right
+        # place automatically after pivot_root switches the root.
+        _mount_pseudo_filesystems(config.rootfs)
         _setup_rootfs(config)
-        _mount_pseudo_filesystems()
         _set_hostname(config)
         _exec_command(config)
     except Exception as exc:  # noqa: BLE001
@@ -162,21 +167,33 @@ def _bind_volumes(config: ContainerConfig) -> None:
             logger.debug("Bind-mounted %s → %s", host_path, container_abs)
 
 
-def _mount_pseudo_filesystems() -> None:
+def _mount_pseudo_filesystems(rootfs: Path | None = None) -> None:
     """Mount /proc, /dev, /sys, and /tmp inside the container.
 
     Uses mount(2) directly via ctypes — no subprocess fork, no ENOMEM risk.
     /dev is mounted as tmpfs (devtmpfs requires CAP_SYS_ADMIN in the initial
     user namespace; inside a user namespace tmpfs is sufficient).
+
+    Args:
+        rootfs: When provided, mounts are created at rootfs/<target> BEFORE
+                pivot_root. This is required because the kernel blocks proc/sysfs
+                mounting after pivot_root in a user namespace (the host FS-backed
+                root mount's user_ns breaks the PID-namespace ownership check).
+                After pivot_root the mounts are already in the right place.
     """
     for fstype, source, target in _PSEUDO_MOUNTS:
-        Path(target.decode()).mkdir(parents=True, exist_ok=True)
-        ret = _mount(source, target, fstype, 0)
+        if rootfs is not None:
+            abs_target = rootfs / target.decode().lstrip("/")
+        else:
+            abs_target = Path(target.decode())
+        abs_target.mkdir(parents=True, exist_ok=True)
+        target_bytes = str(abs_target).encode()
+        ret = _mount(source, target_bytes, fstype, 0)
         if ret != 0:
             err = ctypes.get_errno()
-            logger.warning("Failed to mount %s at %s: errno %d (%s)", fstype, target, err, os.strerror(err))
+            logger.warning("Failed to mount %s at %s: errno %d (%s)", fstype, target_bytes, err, os.strerror(err))
         else:
-            logger.debug("Mounted %s at %s", fstype.decode(), target.decode())
+            logger.debug("Mounted %s at %s", fstype.decode(), target_bytes.decode())
 
 
 def _set_hostname(config: ContainerConfig) -> None:
