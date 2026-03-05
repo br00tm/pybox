@@ -32,7 +32,7 @@ def _all_containers() -> list[dict[str, Any]]:
         return []
 
 
-def complete_container(ctx: Any, param: Any, incomplete: str) -> list[str]:
+def complete_container(ctx: Any, args: Any, incomplete: str) -> list[str]:
     """Suggest container IDs and names for shell completion.
 
     Matches running containers whose ID starts with `incomplete` or whose
@@ -51,7 +51,7 @@ def complete_container(ctx: Any, param: Any, incomplete: str) -> list[str]:
     return suggestions
 
 
-def complete_running_container(ctx: Any, param: Any, incomplete: str) -> list[str]:
+def complete_running_container(ctx: Any, args: Any, incomplete: str) -> list[str]:
     """Suggest only RUNNING container IDs/names for shell completion."""
     suggestions: list[str] = []
     for c in _running_containers():
@@ -64,7 +64,7 @@ def complete_running_container(ctx: Any, param: Any, incomplete: str) -> list[st
     return suggestions
 
 
-def complete_image(ctx: Any, param: Any, incomplete: str) -> list[str]:
+def complete_image(ctx: Any, args: Any, incomplete: str) -> list[str]:
     """Suggest locally cached image names for shell completion."""
     try:
         from pybox.config import get_config
