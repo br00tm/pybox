@@ -28,12 +28,24 @@ from pathlib import Path
 from typing import NoReturn
 
 from pybox.container.config import ContainerConfig
-from pybox.namespace.constants import CONTAINER_CLONE_FLAGS
+from pybox.namespace.constants import (
+    CLONE_NEWUSER,
+    CLONE_NEWPID,
+    CLONE_NEWNS,
+    CLONE_NEWNET,
+    CLONE_NEWUTS,
+    CLONE_NEWIPC,
+)
 from pybox.namespace.pivot_root import pivot_root_or_chroot
 from pybox.namespace.unshare import sethostname, unshare
-from pybox.namespace.user_map import setup_rootless_id_maps
 
 logger = logging.getLogger(__name__)
+
+# Namespaces that require the user namespace to already have uid/gid maps
+# written before they can be created by an unprivileged process.
+_POST_USER_FLAGS: int = (
+    CLONE_NEWPID | CLONE_NEWNS | CLONE_NEWNET | CLONE_NEWUTS | CLONE_NEWIPC
+)
 
 # Pseudo-filesystem mount specs: (fstype, source, target)
 _PSEUDO_MOUNTS: list[tuple[str, str, str]] = [
@@ -44,48 +56,38 @@ _PSEUDO_MOUNTS: list[tuple[str, str, str]] = [
 ]
 
 
-def container_init(config: ContainerConfig) -> NoReturn:
+def container_init(config: ContainerConfig, sync_read_fd: int) -> NoReturn:
     """Entry point for the container child process.
 
-    Called in the forked child after os.fork(). Configures all namespaces,
-    mounts, and finally exec's the user command.
+    Two-phase namespace setup required for rootless containers:
+      Phase 1 — unshare CLONE_NEWUSER only
+      Sync    — read one byte from sync_read_fd (parent writes uid/gid maps then signals)
+      Phase 2 — unshare PID, MNT, NET, UTS, IPC (now have capabilities via user ns)
 
     Args:
-        config: ContainerConfig describing the container to start.
-
-    This function must NEVER return; it either exec's or exits.
+        config:       ContainerConfig describing the container to start.
+        sync_read_fd: Read end of a pipe; parent closes it after writing uid/gid maps.
     """
     try:
-        _setup_namespaces()
-        _setup_user_namespace()
+        # Phase 1: create user namespace (works without any privileges)
+        unshare(CLONE_NEWUSER)
+
+        # Sync: wait for parent to write uid_map and gid_map, then signal us
+        try:
+            os.read(sync_read_fd, 1)
+        finally:
+            os.close(sync_read_fd)
+
+        # Phase 2: now that we have uid 0 in the user namespace, create the rest
+        unshare(_POST_USER_FLAGS)
+
         _setup_rootfs(config)
         _mount_pseudo_filesystems()
         _set_hostname(config)
         _exec_command(config)
     except Exception as exc:  # noqa: BLE001
-        # Print to stderr so the parent can capture it; then exit non-zero
         print(f"[pybox init] FATAL: {exc}", file=sys.stderr, flush=True)
         os._exit(1)  # noqa: SLF001
-
-
-def _setup_namespaces() -> None:
-    """Unshare all container namespaces in one syscall."""
-    # unshare(2) — detach from host namespaces. CLONE_NEWPID takes effect
-    # for children of this process, making them appear as PID 1.
-    unshare(CONTAINER_CLONE_FLAGS)
-    logger.debug("Namespaces unshared: %#010x", CONTAINER_CLONE_FLAGS)
-
-
-def _setup_user_namespace() -> None:
-    """Write uid_map and gid_map so the container appears to run as root.
-
-    This must happen before pivot_root so that file permission checks inside
-    the new root work correctly.
-    """
-    # We write mappings for our own PID ('self' == /proc/self)
-    # setup_rootless_id_maps defaults to os.getuid() / os.getgid() as host side
-    setup_rootless_id_maps(os.getpid())
-    logger.debug("UID/GID maps written for PID %d", os.getpid())
 
 
 def _setup_rootfs(config: ContainerConfig) -> None:

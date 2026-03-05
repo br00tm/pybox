@@ -179,17 +179,26 @@ class ContainerManager:
                 container_id, exc,
             )
 
+        # Pipe for uid/gid map synchronisation:
+        #   parent writes maps → closes write end → child unblocks
+        sync_r, sync_w = os.pipe()
+
         # Fork: child runs container_init, parent returns the child PID
         pid = os.fork()
         if pid == 0:
             # ---- Child process ----
-            # Import here to avoid polluting the parent's module state
+            os.close(sync_w)  # child does not write
             from pybox.container.init import container_init
-            container_init(container_cfg)
-            # container_init never returns; if it does, something is wrong
+            container_init(container_cfg, sync_read_fd=sync_r)
             os._exit(1)  # noqa: SLF001
 
         # ---- Parent process ----
+        os.close(sync_r)  # parent does not read
+
+        # Write uid/gid maps for the child's new user namespace, then unblock it
+        _write_id_maps_for_child(pid)
+        os.close(sync_w)  # closing write end sends EOF → child unblocks
+
         # Add the child to the cgroup so resource limits apply
         if _cgroup_available:
             try:
@@ -340,6 +349,22 @@ class ContainerManager:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _write_id_maps_for_child(self, pid: int) -> None:
+        """Write uid_map and gid_map for the child's user namespace.
+
+        Must be called from the parent after fork, before closing the sync pipe.
+        The child is blocked reading from the sync pipe during this window.
+        """
+        from pybox.namespace.user_map import IDMapping, write_uid_map, write_gid_map
+        uid = os.getuid()
+        gid = os.getgid()
+        try:
+            write_uid_map(pid, [IDMapping(container_id=0, host_id=uid, count=1)])
+            write_gid_map(pid, [IDMapping(container_id=0, host_id=gid, count=1)])
+            logger.debug("Wrote uid/gid maps for child PID %d (host uid=%d)", pid, uid)
+        except Exception as exc:
+            logger.warning("Failed to write id maps for child %d: %s", pid, exc)
 
     async def _pull_image(self, image: str) -> list[Path]:
         """Pull an image and return its extracted layer directories."""
