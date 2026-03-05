@@ -39,8 +39,10 @@ if _libc_name:
     _libc.syscall.restype = ctypes.c_long
     _libc.syscall.argtypes = [ctypes.c_long, ctypes.c_int, ctypes.c_int]
 
-# Namespace types to enter (in order)
-_NS_TYPES = ["ipc", "uts", "net", "pid", "mnt"]
+# Namespace types to enter (in order).
+# user MUST come first: entering it grants the capabilities (CAP_SYS_ADMIN)
+# required to then enter ipc/uts/net/pid/mnt without EPERM.
+_NS_TYPES = ["user", "ipc", "uts", "net", "pid", "mnt"]
 
 
 def _setns(fd: int, nstype: int = 0) -> None:

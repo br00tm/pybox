@@ -38,10 +38,19 @@ def exec_cmd(
         print_error(str(exc))
         raise typer.Exit(1)
 
+    # Typer may include the '--' separator as the first element of cmd.
+    parsed_cmd = list(cmd)
+    while parsed_cmd and parsed_cmd[0] == "--":
+        parsed_cmd.pop(0)
+
+    if not parsed_cmd:
+        print_error("No command specified")
+        raise typer.Exit(1)
+
     try:
         exit_code = exec_in_container(
             resolved_id,
-            list(cmd),
+            parsed_cmd,
             cfg.containers_dir,
             tty=tty or interactive,
         )
