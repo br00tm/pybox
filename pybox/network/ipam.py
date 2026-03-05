@@ -60,7 +60,7 @@ class IpamManager:
         Raises:
             NetworkError: If the pool is exhausted.
         """
-        with self._locked():
+        with self._locked(self):
             allocated = self._load()
             network = ipaddress.IPv4Network(self._cidr, strict=False)
 
@@ -85,7 +85,7 @@ class IpamManager:
         Args:
             ip: IP address string to release.
         """
-        with self._locked():
+        with self._locked(self):
             allocated = self._load()
             allocated.discard(ip)
             self._save(allocated)
@@ -121,12 +121,6 @@ class IpamManager:
 
         def __init__(self, manager: "IpamManager") -> None:
             self._lock_file = manager._lock_file
-
-        def __new__(cls, manager: "IpamManager"):  # type: ignore[override]
-            # Return a regular context manager object
-            obj = object.__new__(cls)
-            obj._lock_file = manager._lock_file  # type: ignore[attr-defined]
-            return obj
 
         def __enter__(self) -> None:
             self._lock_file.parent.mkdir(parents=True, exist_ok=True)

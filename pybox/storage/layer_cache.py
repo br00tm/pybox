@@ -102,7 +102,7 @@ class LayerCache:
 
     def stats(self) -> dict[str, int]:
         """Return cache statistics."""
-        entries = list(self._cache_dir.iterdir()) if self._cache_dir.exists() else []
+        entries = [e for e in self._cache_dir.iterdir() if e.is_dir()] if self._cache_dir.exists() else []
         total_size = sum(
             f.stat().st_size
             for e in entries
