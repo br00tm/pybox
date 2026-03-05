@@ -292,7 +292,7 @@ class ImageBuilder:
     def _load_base_config(self, image_ref: str) -> dict[str, Any]:
         """Load the OCI config JSON for the base image if cached."""
         from pybox.registry.client import _parse_image_ref
-        _, _, _ = _parse_image_ref(image_ref)  # noqa: unused
+        _, _, _ = _parse_image_ref(image_ref)  # noqa: F841
         # Walk image store looking for a config.json for this image
         sha256_dir = self._cfg.images_dir / "sha256"
         if not sha256_dir.exists():

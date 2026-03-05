@@ -24,7 +24,6 @@ def exec_cmd(
     from pybox.container.exec import exec_in_container
     from pybox.exceptions import ContainerError, ContainerNotFoundError
 
-    from pybox.container.runtime import ContainerManager
     from pybox.container.state import StateManager
 
     cfg = get_config()

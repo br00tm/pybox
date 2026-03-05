@@ -517,6 +517,32 @@ pybox stop ciclo && pybox rm ciclo
 
 ---
 
+---
+
+## 📖 Referência de Comandos
+
+| Comando | Descrição | Aceita nome? | Tab complete? |
+|---------|-----------|:---:|:---:|
+| `pybox run --image IMG [--name N] [-d] -- CMD` | Cria e inicia container | — | imagem |
+| `pybox start [-d] NAME\|ID` | Inicia container parado | ✅ | containers |
+| `pybox stop NAME\|ID` | Para container (SIGTERM → SIGKILL) | ✅ | running |
+| `pybox exec NAME\|ID CMD` | Executa comando em container running | ✅ | running |
+| `pybox rm [-f] NAME\|ID` | Remove container | ✅ | containers |
+| `pybox ps [-a]` | Lista containers | — | — |
+| `pybox logs [-f] [-n N] NAME\|ID` | Streaming de logs | ✅ | containers |
+| `pybox pull IMAGE` | Baixa imagem do registry | — | — |
+| `pybox push IMAGE` | Envia imagem para registry | — | — |
+| `pybox build -t TAG [-f FILE]` | Constrói imagem do boxfile.toml | — | — |
+| `pybox images` | Lista imagens locais | — | — |
+| `pybox rmi IMAGE` | Remove imagem local | — | — |
+| `pybox network ls\|create\|rm\|inspect` | Gerencia redes | — | — |
+| `pybox info` | Versão, storage, rootless, kernel | — | — |
+| `pyboxd` | Inicia o daemon (socket Unix) | — | — |
+
+> **Resolve por prefixo**: qualquer comando que aceita ID também aceita prefixo curto — `pybox stop a1b2` para o container cujo ID começa com `a1b2`.
+
+---
+
 ### Imagens
 
 #### Pull de imagem do registry

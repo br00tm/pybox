@@ -42,8 +42,6 @@ def complete_container(ctx: Any, args: Any, incomplete: str) -> list[str]:
     for c in _all_containers():
         cid = c.get("id", "")
         name = c.get("name") or ""
-        state = c.get("state", "")
-        label = f"{cid[:12]}  ({name or state})" if name else f"{cid[:12]}  ({state})"
         if cid.startswith(incomplete) and cid not in suggestions:
             suggestions.append(cid[:12])
         if name and name.startswith(incomplete) and name not in suggestions:
