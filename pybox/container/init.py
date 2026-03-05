@@ -56,29 +56,40 @@ _PSEUDO_MOUNTS: list[tuple[str, str, str]] = [
 ]
 
 
-def container_init(config: ContainerConfig, sync_read_fd: int) -> NoReturn:
+def container_init(
+    config: ContainerConfig,
+    child_ready_w: int,
+    maps_done_r: int,
+) -> NoReturn:
     """Entry point for the container child process.
 
-    Two-phase namespace setup required for rootless containers:
-      Phase 1 — unshare CLONE_NEWUSER only
-      Sync    — read one byte from sync_read_fd (parent writes uid/gid maps then signals)
-      Phase 2 — unshare PID, MNT, NET, UTS, IPC (now have capabilities via user ns)
+    Rootless user-namespace synchronisation protocol (two-pipe):
+
+      1. Child: unshare(CLONE_NEWUSER)
+      2. Child → Parent: write 1 byte to child_ready_w  (user ns ready)
+      3. Parent writes uid_map + gid_map for this PID
+      4. Parent → Child: write 1 byte to maps_done pipe (maps written)
+      5. Child: unshare(PID | MNT | NET | UTS | IPC)
+      6. Child: pivot_root → mounts → exec
 
     Args:
-        config:       ContainerConfig describing the container to start.
-        sync_read_fd: Read end of a pipe; parent closes it after writing uid/gid maps.
+        config:        ContainerConfig describing the container to start.
+        child_ready_w: Write end of child→parent pipe; closed after signalling.
+        maps_done_r:   Read end of parent→child pipe; closed after reading.
     """
     try:
-        # Phase 1: create user namespace (works without any privileges)
+        # Phase 1: create user namespace (no privileges required)
         unshare(CLONE_NEWUSER)
 
-        # Sync: wait for parent to write uid_map and gid_map, then signal us
-        try:
-            os.read(sync_read_fd, 1)
-        finally:
-            os.close(sync_read_fd)
+        # Signal parent: user namespace is ready, please write uid/gid maps
+        os.write(child_ready_w, b"\x00")
+        os.close(child_ready_w)
 
-        # Phase 2: now that we have uid 0 in the user namespace, create the rest
+        # Wait for parent to confirm maps are written
+        os.read(maps_done_r, 1)
+        os.close(maps_done_r)
+
+        # Phase 2: now have CAP_SYS_ADMIN in the new user namespace
         unshare(_POST_USER_FLAGS)
 
         _setup_rootfs(config)
@@ -86,6 +97,12 @@ def container_init(config: ContainerConfig, sync_read_fd: int) -> NoReturn:
         _set_hostname(config)
         _exec_command(config)
     except Exception as exc:  # noqa: BLE001
+        # Ensure pipes are closed so parent doesn't deadlock
+        for fd in (child_ready_w, maps_done_r):
+            try:
+                os.close(fd)
+            except OSError:
+                pass
         print(f"[pybox init] FATAL: {exc}", file=sys.stderr, flush=True)
         os._exit(1)  # noqa: SLF001
 

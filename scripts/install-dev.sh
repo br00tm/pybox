@@ -17,8 +17,7 @@ apt-get install -y --no-install-recommends \
     nftables \
     iproute2 \
     iptables \
-    fuse3 \
-    nsenter
+    fuse3
 
 # Python build dependencies
 apt-get install -y --no-install-recommends \

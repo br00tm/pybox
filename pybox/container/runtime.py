@@ -179,25 +179,38 @@ class ContainerManager:
                 container_id, exc,
             )
 
-        # Pipe for uid/gid map synchronisation:
-        #   parent writes maps → closes write end → child unblocks
-        sync_r, sync_w = os.pipe()
+        # Two-pipe synchronisation for user-namespace uid/gid map handshake:
+        #   child_ready:  child → parent  (child signals after unshare NEWUSER)
+        #   maps_done:    parent → child  (parent signals after writing maps)
+        child_ready_r, child_ready_w = os.pipe()
+        maps_done_r, maps_done_w = os.pipe()
 
-        # Fork: child runs container_init, parent returns the child PID
+        # Fork: child runs container_init, parent orchestrates uid/gid maps
         pid = os.fork()
         if pid == 0:
             # ---- Child process ----
-            os.close(sync_w)  # child does not write
+            os.close(child_ready_r)
+            os.close(maps_done_w)
             from pybox.container.init import container_init
-            container_init(container_cfg, sync_read_fd=sync_r)
+            container_init(container_cfg, child_ready_w=child_ready_w, maps_done_r=maps_done_r)
             os._exit(1)  # noqa: SLF001
 
         # ---- Parent process ----
-        os.close(sync_r)  # parent does not read
+        os.close(child_ready_w)
+        os.close(maps_done_r)
 
-        # Write uid/gid maps for the child's new user namespace, then unblock it
+        # Wait for child to signal its user namespace is ready
+        try:
+            os.read(child_ready_r, 1)
+        finally:
+            os.close(child_ready_r)
+
+        # Write uid/gid maps for the child's new user namespace
         self._write_id_maps_for_child(pid)
-        os.close(sync_w)  # closing write end sends EOF → child unblocks
+
+        # Signal child: maps are written, continue with rest of setup
+        os.write(maps_done_w, b"\x00")
+        os.close(maps_done_w)
 
         # Add the child to the cgroup so resource limits apply
         if _cgroup_available:
@@ -351,20 +364,49 @@ class ContainerManager:
     # ------------------------------------------------------------------
 
     def _write_id_maps_for_child(self, pid: int) -> None:
-        """Write uid_map and gid_map for the child's user namespace.
+        """Write uid_map and gid_map for the child's new user namespace.
 
-        Must be called from the parent after fork, before closing the sync pipe.
-        The child is blocked reading from the sync pipe during this window.
+        Tries (in order):
+        1. newuidmap/newgidmap setuid binaries — work for any unprivileged user
+           with /etc/subuid entries; most reliable rootless approach.
+        2. Direct /proc/<pid>/{uid,gid}_map write — works when parent has
+           CAP_SETUID (root) or is writing a single-entry own-UID mapping.
+
+        Called from the parent after the child signals its user namespace is
+        ready (CLONE_NEWUSER done) and before signalling maps_done.
         """
-        from pybox.namespace.user_map import IDMapping, write_uid_map, write_gid_map
+        import shutil
+        import subprocess
+
         uid = os.getuid()
         gid = os.getgid()
+
+        newuidmap = shutil.which("newuidmap")
+        newgidmap = shutil.which("newgidmap")
+
+        if newuidmap and newgidmap:
+            try:
+                subprocess.run(
+                    [newuidmap, str(pid), "0", str(uid), "1"],
+                    check=True, capture_output=True, text=True,
+                )
+                subprocess.run(
+                    [newgidmap, str(pid), "0", str(gid), "1"],
+                    check=True, capture_output=True, text=True,
+                )
+                logger.debug("newuidmap/newgidmap wrote maps for PID %d", pid)
+                return
+            except subprocess.CalledProcessError as exc:
+                logger.debug("newuidmap failed (%s), falling back to direct write", exc.stderr.strip())
+
+        # Direct write fallback
+        from pybox.namespace.user_map import IDMapping, write_uid_map, write_gid_map
         try:
             write_uid_map(pid, [IDMapping(container_id=0, host_id=uid, count=1)])
             write_gid_map(pid, [IDMapping(container_id=0, host_id=gid, count=1)])
-            logger.debug("Wrote uid/gid maps for child PID %d (host uid=%d)", pid, uid)
+            logger.debug("Direct write of uid/gid maps for PID %d (host uid=%d)", pid, uid)
         except Exception as exc:
-            logger.warning("Failed to write id maps for child %d: %s", pid, exc)
+            logger.warning("Failed to write id maps for child %d: %s — container may lack root inside", pid, exc)
 
     async def _pull_image(self, image: str) -> list[Path]:
         """Pull an image and return its extracted layer directories."""
