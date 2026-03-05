@@ -109,15 +109,35 @@ def run(
             typer.echo(f"Container '{label}' running in background.")
             raise typer.Exit(0)
 
-        # Child B: runs in background, waits for container to finish, then cleans up
+        # Child B: runs in background, waits for container to finish, then cleans up.
+        # We CANNOT call os.waitpid() here because detach-child is NOT the parent
+        # of the container process (the CLI parent was; after CLI exits, the container
+        # is adopted by PID 1/init). Instead, poll with kill(pid, 0).
+        import time
+        from pybox.container.state import ContainerState
+
         os.setsid()  # detach from controlling terminal
-        # Redirect stdio to /dev/null so background process doesn't write to terminal
         null_fd = os.open(os.devnull, os.O_RDWR)
         for fd in (0, 1, 2):
             os.dup2(null_fd, fd)
         os.close(null_fd)
 
-        manager.wait(container_id)
+        state = manager._state.get(container_id)
+        pid = state.get("pid")
+        if pid:
+            while True:
+                try:
+                    os.kill(pid, 0)  # 0 = check existence only, no signal sent
+                    time.sleep(1)
+                except (ProcessLookupError, PermissionError):
+                    break  # process exited or we can no longer see it
+            manager._state.update(
+                container_id,
+                state=ContainerState.STOPPED.value,
+                pid=None,
+                exit_code=0,
+            )
+
         if rm:
             try:
                 manager.remove(container_id)
