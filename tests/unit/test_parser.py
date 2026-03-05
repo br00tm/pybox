@@ -28,8 +28,8 @@ class TestParseStep:
     def test_copy_step(self) -> None:
         step = _parse_step({"name": "copy", "copy": {"src": "./src", "dst": "/app"}})
         assert isinstance(step, CopyStep)
-        assert step.copy.src == "./src"
-        assert step.copy.dst == "/app"
+        assert step.files.src == "./src"
+        assert step.files.dst == "/app"
 
     def test_workdir_step(self) -> None:
         step = _parse_step({"name": "wd", "workdir": "/app"})
@@ -69,8 +69,8 @@ class TestCacheKey:
         assert key1 != key2
 
     def test_copy_step_cache_key_includes_paths(self) -> None:
-        step1 = CopyStep(copy={"src": "./src", "dst": "/app"})
-        step2 = CopyStep(copy={"src": "./other", "dst": "/app"})
+        step1 = CopyStep(**{"copy": {"src": "./src", "dst": "/app"}})
+        step2 = CopyStep(**{"copy": {"src": "./other", "dst": "/app"}})
         assert step1.cache_key("p") != step2.cache_key("p")
 
     def test_workdir_step_cache_key(self) -> None:
