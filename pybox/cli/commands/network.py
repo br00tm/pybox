@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 

@@ -20,7 +20,6 @@ from typing import Any, AsyncIterator
 
 from pybox.daemon.protocol import (
     DaemonRequest,
-    DaemonResponse,
     Method,
     decode_response,
     encode,

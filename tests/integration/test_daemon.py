@@ -10,13 +10,10 @@ Requires: pytest-asyncio
 from __future__ import annotations
 
 import asyncio
-import os
-import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
-import pytest_asyncio
 
 from pybox.daemon.protocol import Method
 

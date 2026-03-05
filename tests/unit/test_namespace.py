@@ -5,7 +5,6 @@ These tests do NOT require root — all syscall interactions are mocked.
 
 from __future__ import annotations
 
-import ctypes
 from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 

@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Annotated, Literal, Union
+from typing import Union
 
 from pydantic import BaseModel, Field
 

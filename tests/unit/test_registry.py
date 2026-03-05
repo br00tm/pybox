@@ -6,7 +6,6 @@ All HTTP interactions are mocked — no real network access required.
 from __future__ import annotations
 
 import hashlib
-import json
 import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch

@@ -21,7 +21,6 @@ def rmi(
     import json
     from pybox.config import get_config
     from pybox.container.state import StateManager
-    from pybox.exceptions import ImageNotFoundError
 
     cfg = get_config()
     sha256_dir = cfg.images_dir / "sha256"

@@ -6,18 +6,13 @@ All tests use in-memory tar creation via tmp_path. No root required.
 from __future__ import annotations
 
 import io
-import os
-import stat
 import tarfile
 from pathlib import Path
 
-import pytest
 
 from pybox.image.layer import (
     OPAQUE_WHITEOUT,
     WHITEOUT_PREFIX,
-    _apply_opaque_whiteout,
-    _apply_whiteout,
     extract_layer,
 )
 

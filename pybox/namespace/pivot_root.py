@@ -116,7 +116,6 @@ def pivot_root_or_chroot(new_root: str, put_old_name: str = ".old_root") -> None
         new_root:     Absolute path to the container's root filesystem.
         put_old_name: Directory name (inside new_root) for the old root.
     """
-    import shutil
 
     put_old_abs = os.path.join(new_root, put_old_name.lstrip("/"))
     os.makedirs(put_old_abs, exist_ok=True)

@@ -112,7 +112,6 @@ async def read_message(reader: "asyncio.StreamReader") -> bytes:  # type: ignore
     Raises:
         EOFError: If the connection is closed.
     """
-    import asyncio
 
     length_data = await reader.readexactly(4)
     length = struct.unpack(">I", length_data)[0]

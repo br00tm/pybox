@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import gzip
-import hashlib
 import io
 import json
 import tarfile
 from pathlib import Path
 
-import pytest
 
 
 def _make_layer_tar_gz(path: Path, files: dict[str, bytes]) -> Path:

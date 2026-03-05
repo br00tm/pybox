@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import ctypes
 import ctypes.util
-import errno as errno_mod
 import os
 
 from pybox.exceptions import NamespaceError

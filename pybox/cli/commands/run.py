@@ -9,14 +9,12 @@ Usage:
 from __future__ import annotations
 
 import asyncio
-import os
-import sys
 from typing import Annotated, Optional
 
 import typer
 
 from pybox.cgroups.specs import CgroupSpec
-from pybox.cli.output import print_error, print_success
+from pybox.cli.output import print_error
 from pybox.config import get_config
 from pybox.container.runtime import ContainerManager
 from pybox.exceptions import PyBoxError

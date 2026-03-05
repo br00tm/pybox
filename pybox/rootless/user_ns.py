@@ -15,7 +15,6 @@ from __future__ import annotations
 import logging
 import os
 import subprocess
-from pathlib import Path
 
 from pybox.exceptions import NamespaceError
 from pybox.namespace.user_map import IDMapping, write_gid_map, write_uid_map

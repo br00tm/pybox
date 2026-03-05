@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 

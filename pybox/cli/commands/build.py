@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from rich.console import Console
@@ -25,8 +25,8 @@ console = Console()
 
 @app.callback(invoke_without_command=True)
 def build(
-    file: Annotated[Path, typer.Option("--file", "-f", help="Path to boxfile.toml")] = Path("boxfile.toml"),
     tag: Annotated[str, typer.Option("--tag", "-t", help="Image tag, e.g. myapp:v1")],
+    file: Annotated[Path, typer.Option("--file", "-f", help="Path to boxfile.toml")] = Path("boxfile.toml"),
     no_cache: Annotated[bool, typer.Option("--no-cache", help="Disable layer cache")] = False,
 ) -> None:
     """Build an OCI image from BOXFILE (default: boxfile.toml) and tag it."""

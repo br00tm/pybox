@@ -29,7 +29,7 @@ from typing import NoReturn
 
 from pybox.container.config import ContainerConfig
 from pybox.namespace.constants import CONTAINER_CLONE_FLAGS
-from pybox.namespace.pivot_root import pivot_root_or_chroot, setup_rootfs
+from pybox.namespace.pivot_root import pivot_root_or_chroot
 from pybox.namespace.unshare import sethostname, unshare
 from pybox.namespace.user_map import setup_rootless_id_maps
 

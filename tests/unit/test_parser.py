@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 from pathlib import Path
 
 import pytest
 
 from pybox.image.build_spec import (
-    BuildSpec,
     CopyStep,
     EnvStep,
     RunStep,

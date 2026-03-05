@@ -21,7 +21,6 @@ Ephemeral container lifecycle (per step):
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import json
 from pathlib import Path
@@ -229,7 +228,8 @@ class ImageBuilder:
         parent_digest: str,
     ) -> Path | None:
         """Install Python venv as a dedicated layer."""
-        import hashlib, json
+        import hashlib
+        import json
         from pybox.image.python_step import PythonStepRunner
 
         assert spec.python is not None
@@ -251,7 +251,7 @@ class ImageBuilder:
 
         # We need a rootfs to run chroot in — use a temporary overlay
         from pybox.storage.overlay import prepare_container_overlay
-        import uuid, tempfile
+        import uuid
 
         eph_id = uuid.uuid4().hex[:12]
         overlay = prepare_container_overlay(eph_id, layers, self._cfg.containers_dir)

@@ -120,6 +120,6 @@ class PythonStepRunner:
             ) from exc
         except FileNotFoundError as exc:
             raise ContainerError(
-                f"chroot not found — must run as root for Python step",
+                "chroot not found — must run as root for Python step",
                 details=str(exc),
             ) from exc
