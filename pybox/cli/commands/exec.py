@@ -6,6 +6,7 @@ from typing import Annotated
 
 import typer
 
+from pybox.cli.completion import complete_running_container
 from pybox.cli.output import print_error
 
 app = typer.Typer(help="Execute a command in a running container.")
@@ -13,7 +14,7 @@ app = typer.Typer(help="Execute a command in a running container.")
 
 @app.callback(invoke_without_command=True)
 def exec_cmd(
-    container_id: Annotated[str, typer.Argument(help="Container ID or name")],
+    container_id: Annotated[str, typer.Argument(help="Container ID or name", autocompletion=complete_running_container)],
     cmd: Annotated[list[str], typer.Argument(help="Command to execute")],
     tty: Annotated[bool, typer.Option("--tty", "-t", help="Allocate a pseudo-TTY")] = False,
     interactive: Annotated[bool, typer.Option("--interactive", "-i", help="Keep stdin open")] = False,

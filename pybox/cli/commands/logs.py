@@ -8,6 +8,7 @@ from typing import Annotated
 
 import typer
 
+from pybox.cli.completion import complete_container
 from pybox.cli.output import print_error
 
 app = typer.Typer(help="Fetch container logs.")
@@ -15,7 +16,7 @@ app = typer.Typer(help="Fetch container logs.")
 
 @app.callback(invoke_without_command=True)
 def logs(
-    container_id: Annotated[str, typer.Argument(help="Container ID or name")],
+    container_id: Annotated[str, typer.Argument(help="Container ID or name", autocompletion=complete_container)],
     follow: Annotated[bool, typer.Option("--follow", "-f", help="Stream live log output")] = False,
     tail: Annotated[int, typer.Option("--tail", "-n", help="Number of lines to show")] = 100,
     timestamps: Annotated[bool, typer.Option("--timestamps", "-t", help="Show timestamps")] = False,
